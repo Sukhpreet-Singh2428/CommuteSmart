@@ -1,0 +1,88 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    @apply font-sans antialiased text-gray-100 bg-background-dark;
+  }
+}
+
+@layer utilities {
+  .text-gradient {
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-image: linear-gradient(to right, #0fb880, #0ea5e9);
+  }
+  .glass-card {
+    background: rgba(16, 34, 28, 0.6);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(15, 184, 128, 0.1);
+  }
+  .glass-panel {
+    background: rgba(16, 34, 28, 0.6);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(15, 184, 128, 0.1);
+  }
+  .glass-card-feed {
+    background: rgba(255, 255, 255, 0.03);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    transition: all 0.2s ease-in-out;
+  }
+  .glass-card-feed:hover {
+    border-color: rgba(15, 184, 128, 0.3);
+    background: rgba(255, 255, 255, 0.06);
+    transform: translateY(-2px);
+  }
+  .glass-card-light {
+    @apply rounded-2xl border border-white/20 backdrop-blur-xl;
+    background: rgba(30, 41, 59, 0.5);
+  }
+  .map-lines {
+    background-image:
+      linear-gradient(rgba(15, 184, 128, 0.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(15, 184, 128, 0.05) 1px, transparent 1px);
+    background-size: 40px 40px;
+  }
+  .btn-glow {
+    box-shadow: 0 0 15px rgba(15, 184, 128, 0.4);
+    transition: all 0.3s ease;
+  }
+  .btn-glow:hover {
+    box-shadow: 0 0 25px rgba(15, 184, 128, 0.6);
+    transform: translateY(-1px);
+  }
+  .hero-bg-pattern {
+    background-color: #10221c;
+    background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%230fb880' fill-opacity='0.05'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+  }
+  .gradient-eco {
+    background: linear-gradient(135deg, #10b981 0%, #0ea5e9 100%);
+  }
+  .gradient-text {
+    @apply bg-clip-text text-transparent;
+    background-image: linear-gradient(135deg, #10b981 0%, #0ea5e9 100%);
+  }
+  .glass-card-profile {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(20, 184, 166, 0.05) 100%);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(16, 185, 129, 0.2);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.1);
+  }
+  .dark .glass-card-profile {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(20, 184, 166, 0.05) 100%);
+    border: 1px solid rgba(16, 185, 129, 0.2);
+  }
+  .glass-card-hover:hover {
+    border-color: rgba(16, 185, 129, 0.4);
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.2) 0%, rgba(20, 184, 166, 0.1) 100%);
+  }
+}
