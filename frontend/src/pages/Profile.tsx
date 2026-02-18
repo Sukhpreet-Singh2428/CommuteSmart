@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 
 const achievements = [
@@ -35,6 +36,71 @@ const settingsOptions = [
 export function Profile() {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'overview' | 'achievements' | 'activity' | 'settings'>('overview');
+  const [isLoading, setIsLoading] = useState(true);
+  const [animatedStats, setAnimatedStats] = useState({
+    co2: 0,
+    trees: 0,
+    trips: 0,
+    distance: 0,
+    level: 0,
+    xp: 0
+  });
+  const [settings, setSettings] = useState(
+    settingsOptions.reduce((acc, category) => {
+      category.items.forEach(item => {
+        acc[item.label] = item.enabled;
+      });
+      return acc;
+    }, {} as Record<string, boolean>)
+  );
+
+  // POLISHED: Animate stats on mount
+  useEffect(() => {
+    const timer = setTimeout(() => setIsLoading(false), 800);
+    return () => clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    if (!isLoading) {
+      const targetStats = {
+        co2: 12.8,
+        trees: 4.2,
+        trips: 248,
+        distance: 1248,
+        level: 14,
+        xp: 2850
+      };
+      
+      const duration = 2000;
+      const steps = 60;
+      const increment = Object.keys(targetStats).reduce((acc, key) => {
+        acc[key as keyof typeof targetStats] = targetStats[key as keyof typeof targetStats] / steps;
+        return acc;
+      }, {} as Record<string, number>);
+      
+      let currentStep = 0;
+      const interval = setInterval(() => {
+        currentStep++;
+        setAnimatedStats({
+          co2: Math.min(targetStats.co2, increment.co2 * currentStep),
+          trees: Math.min(targetStats.trees, increment.trees * currentStep),
+          trips: Math.min(targetStats.trips, Math.floor(increment.trips * currentStep)),
+          distance: Math.min(targetStats.distance, Math.floor(increment.distance * currentStep)),
+          level: Math.min(targetStats.level, Math.floor(increment.level * currentStep)),
+          xp: Math.min(targetStats.xp, Math.floor(increment.xp * currentStep))
+        });
+        
+        if (currentStep >= steps) clearInterval(interval);
+      }, duration / steps);
+      
+      return () => clearInterval(interval);
+    }
+  }, [isLoading]);
+
+  const handleSettingToggle = (label: string) => {
+    setSettings(prev => ({ ...prev, [label]: !prev[label] }));
+    toast.success(`${label} ${!settings[label] ? 'enabled' : 'disabled'}`);
+  };
 
   return (
     <div className="min-h-screen w-full flex flex-col bg-[#0a1411]">
@@ -99,11 +165,16 @@ export function Profile() {
               
               <div className="w-full space-y-2">
                 <div className="flex justify-between text-xs font-bold text-gray-400 uppercase tracking-wider">
-                  <span>Level 14</span>
-                  <span>2,850 / 3,000 XP</span>
+                  <span>Level {animatedStats.level}</span>
+                  <span>{animatedStats.xp.toLocaleString()} / 3,000 XP</span>
                 </div>
                 <div className="w-full bg-white/5 rounded-full h-2 overflow-hidden">
-                  <div className="h-full bg-gradient-to-r from-[#0fb880] to-[#0ea5e9] w-[95%] rounded-full shadow-[0_0_8px_rgba(15,184,128,0.4)]"></div>
+                  <motion.div 
+                    className="h-full bg-gradient-to-r from-[#0fb880] to-[#0ea5e9] rounded-full shadow-[0_0_8px_rgba(15,184,128,0.4)]"
+                    initial={{ width: 0 }}
+                    animate={{ width: '95%' }}
+                    transition={{ delay: 1, duration: 1, ease: 'easeOut' }}
+                  ></motion.div>
                 </div>
               </div>
             </div>
@@ -117,19 +188,47 @@ export function Profile() {
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <span className="text-xs text-gray-400">CO2 Saved</span>
-                <span className="text-lg font-bold text-[#0fb880]">12.8 kg</span>
+                <motion.span 
+                  className="text-lg font-bold text-[#0fb880]"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.2 }}
+                >
+                  {animatedStats.co2.toFixed(1)} kg
+                </motion.span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-xs text-gray-400">Trees Equivalent</span>
-                <span className="text-lg font-bold text-white">4.2</span>
+                <motion.span 
+                  className="text-lg font-bold text-white"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.3 }}
+                >
+                  {animatedStats.trees.toFixed(1)}
+                </motion.span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-xs text-gray-400">Clean Air Rank</span>
-                <span className="text-lg font-bold text-yellow-500">#12</span>
+                <motion.span 
+                  className="text-lg font-bold text-yellow-500"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.4 }}
+                >
+                  #12
+                </motion.span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-xs text-gray-400">Green Score</span>
-                <span className="text-lg font-bold text-[#0fb880]">A+</span>
+                <motion.span 
+                  className="text-lg font-bold text-[#0fb880]"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.5 }}
+                >
+                  A+
+                </motion.span>
               </div>
             </div>
           </div>
@@ -142,19 +241,47 @@ export function Profile() {
             <div className="space-y-3">
               <div className="flex justify-between">
                 <span className="text-xs text-gray-400">Total Trips</span>
-                <span className="text-sm font-bold text-white">248</span>
+                <motion.span 
+                  className="text-sm font-bold text-white"
+                  initial={{ opacity: 0, x: 10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.6 }}
+                >
+                  {animatedStats.trips}
+                </motion.span>
               </div>
               <div className="flex justify-between">
                 <span className="text-xs text-gray-400">Distance</span>
-                <span className="text-sm font-bold text-white">1,248 km</span>
+                <motion.span 
+                  className="text-sm font-bold text-white"
+                  initial={{ opacity: 0, x: 10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.7 }}
+                >
+                  {animatedStats.distance.toLocaleString()} km
+                </motion.span>
               </div>
               <div className="flex justify-between">
                 <span className="text-xs text-gray-400">Reports</span>
-                <span className="text-sm font-bold text-white">47</span>
+                <motion.span 
+                  className="text-sm font-bold text-white"
+                  initial={{ opacity: 0, x: 10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.8 }}
+                >
+                  47
+                </motion.span>
               </div>
               <div className="flex justify-between">
                 <span className="text-xs text-gray-400">Badges</span>
-                <span className="text-sm font-bold text-white">6</span>
+                <motion.span 
+                  className="text-sm font-bold text-white"
+                  initial={{ opacity: 0, x: 10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.9 }}
+                >
+                  6
+                </motion.span>
               </div>
             </div>
           </div>
@@ -171,7 +298,7 @@ export function Profile() {
                 { id: 'activity', label: 'Activity', icon: 'history' },
                 { id: 'settings', label: 'Settings', icon: 'settings' },
               ].map((tab) => (
-                <button
+                <motion.button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id as any)}
                   className={`whitespace-nowrap px-4 py-1.5 rounded-full text-sm font-medium transition-all flex items-center gap-1 ${
@@ -179,10 +306,12 @@ export function Profile() {
                       ? 'bg-[#0fb880] text-white shadow-lg shadow-[#0fb880]/20' 
                       : 'bg-white/5 text-gray-400 border border-white/10 hover:bg-white/10 hover:text-white'
                   }`}
+                  whileHover={{ scale: 1.05, y: -2 }}
+                  whileTap={{ scale: 0.95 }}
                 >
                   <span className="material-symbols-outlined text-sm">{tab.icon}</span>
                   {tab.label}
-                </button>
+                </motion.button>
               ))}
             </div>
           </div>
@@ -198,7 +327,7 @@ export function Profile() {
                     </div>
                     <div>
                       <p className="text-xs text-gray-400 font-medium uppercase">Public Transit</p>
-                      <p className="text-xl font-black text-white">1,248 km</p>
+                      <p className="text-xl font-black text-white">{animatedStats.distance.toLocaleString()} km</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-1 text-xs text-[#0fb880]">
@@ -214,7 +343,7 @@ export function Profile() {
                     </div>
                     <div>
                       <p className="text-xs text-gray-400 font-medium uppercase">CO2 Avoided</p>
-                      <p className="text-xl font-black text-white">215 kg</p>
+                      <p className="text-xl font-black text-white">{animatedStats.co2.toFixed(1)} kg</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-1 text-xs text-yellow-500">
@@ -249,14 +378,24 @@ export function Profile() {
 
           {activeTab === 'achievements' && (
             <div className="grid grid-cols-2 gap-4">
-              {achievements.map((achievement) => (
-                <div key={achievement.title} className={`glass-panel rounded-2xl p-5 ${!achievement.unlocked ? 'opacity-60' : ''}`}>
+              {achievements.map((achievement, index) => (
+                <motion.div 
+                  key={achievement.title} 
+                  className={`glass-panel rounded-2xl p-5 ${!achievement.unlocked ? 'opacity-60' : ''} group`}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.1 }}
+                  whileHover={{ scale: 1.02, y: -5 }}
+                >
                   <div className="flex items-center gap-3 mb-3">
-                    <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
-                      achievement.unlocked ? 'bg-[#0fb880]/10 text-[#0fb880]' : 'bg-white/5 text-gray-500'
-                    }`}>
+                    <motion.div 
+                      className={`w-12 h-12 rounded-full flex items-center justify-center ${
+                        achievement.unlocked ? 'bg-[#0fb880]/10 text-[#0fb880]' : 'bg-white/5 text-gray-500'
+                      } ${achievement.unlocked ? 'group-hover:rotate-12' : ''} transition-transform duration-300`}
+                      whileHover={{ scale: 1.1, rotate: achievement.unlocked ? 15 : 0 }}
+                    >
                       <span className="material-symbols-outlined text-xl">{achievement.icon}</span>
-                    </div>
+                    </motion.div>
                     <div className="flex-1">
                       <h4 className="text-sm font-bold text-white">{achievement.title}</h4>
                       <p className="text-xs text-gray-400">{achievement.description}</p>
@@ -268,15 +407,17 @@ export function Profile() {
                       <span className="text-gray-300">{achievement.progress}%</span>
                     </div>
                     <div className="w-full bg-white/5 rounded-full h-1.5 overflow-hidden">
-                      <div 
+                      <motion.div 
                         className={`h-full rounded-full ${
                           achievement.unlocked ? 'bg-[#0fb880]' : 'bg-gray-600'
                         }`}
-                        style={{ width: `${achievement.progress}%` }}
-                      ></div>
+                        initial={{ width: 0 }}
+                        animate={{ width: `${achievement.progress}%` }}
+                        transition={{ delay: index * 0.1 + 0.5, duration: 1, ease: 'easeOut' }}
+                      ></motion.div>
                     </div>
                   </div>
-                </div>
+                </motion.div>
               ))}
             </div>
           )}
@@ -284,9 +425,16 @@ export function Profile() {
           {activeTab === 'activity' && (
             <div className="space-y-4">
               {recentActivity.map((activity, index) => (
-                <div key={index} className="glass-panel rounded-2xl p-4">
+                <motion.div 
+                  key={index} 
+                  className="glass-panel rounded-2xl p-4 group"
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: index * 0.1 }}
+                  whileHover={{ x: 5 }}
+                >
                   <div className="flex items-center gap-4">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform ${
                       activity.type === 'commute' ? 'bg-[#0fb880]/10 text-[#0fb880]' :
                       activity.type === 'report' ? 'bg-yellow-500/10 text-yellow-500' :
                       'bg-purple-500/10 text-purple-500'
@@ -298,10 +446,17 @@ export function Profile() {
                       <p className="text-xs text-gray-400">{activity.time}</p>
                     </div>
                     <div className="text-right">
-                      <p className="text-xs font-bold text-[#0fb880]">{activity.impact}</p>
+                      <motion.p 
+                        className="text-xs font-bold text-[#0fb880]"
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: index * 0.1 + 0.2 }}
+                      >
+                        {activity.impact}
+                      </motion.p>
                     </div>
                   </div>
-                </div>
+                </motion.div>
               ))}
             </div>
           )}
@@ -319,14 +474,19 @@ export function Profile() {
                           <p className="text-xs text-gray-400">{item.description}</p>
                         </div>
                         <button
-                          onClick={() => toast.success(`${item.label} ${item.enabled ? 'disabled' : 'enabled'}`)}
+                          onClick={() => handleSettingToggle(item.label)}
                           className={`w-12 h-6 rounded-full transition-colors relative ${
-                            item.enabled ? 'bg-[#0fb880]' : 'bg-gray-600'
+                            settings[item.label] ? 'bg-[#0fb880]' : 'bg-gray-600'
                           }`}
+                          whileHover={{ scale: 1.05 }}
+                          whileTap={{ scale: 0.95 }}
                         >
-                          <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${
-                            item.enabled ? 'translate-x-7' : 'translate-x-1'
-                          }`}></div>
+                          <motion.div 
+                            className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${
+                              settings[item.label] ? 'translate-x-7' : 'translate-x-1'
+                            }`}
+                            layout
+                          ></motion.div>
                         </button>
                       </div>
                     ))}
@@ -382,10 +542,23 @@ export function Profile() {
               Current Streak
             </h2>
             <div className="text-center">
-              <div className="text-4xl font-black text-white mb-2">7 🔥</div>
+              <div className="text-4xl font-black text-white mb-2 flex items-center gap-2">
+                <motion.span 
+                  initial={{ rotate: 0 }}
+                  animate={{ rotate: [0, 10, -10, 0] }}
+                  transition={{ duration: 0.5, delay: 1.2 }}
+                >
+                  7 🔥
+                </motion.span>
+              </div>
               <p className="text-xs text-gray-400 mb-3">Days of green commuting</p>
               <div className="w-full bg-white/5 rounded-full h-2 overflow-hidden">
-                <div className="h-full bg-gradient-to-r from-[#0fb880] to-orange-500 w-[70%] rounded-full"></div>
+                <motion.div 
+                  className="h-full bg-gradient-to-r from-[#0fb880] to-orange-500 rounded-full"
+                  initial={{ width: 0 }}
+                  animate={{ width: '70%' }}
+                  transition={{ delay: 1.3, duration: 1, ease: 'easeOut' }}
+                ></motion.div>
               </div>
               <p className="text-xs text-gray-400 mt-2">3 days to next milestone</p>
             </div>

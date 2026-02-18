@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 
 const punjabAlerts = [
@@ -97,6 +98,43 @@ const filterOptions = [
 export function Alerts() {
   const [filter, setFilter] = useState<'all' | 'verified' | 'nearby' | 'recent'>('all');
   const { user } = useAuth();
+  const [isLoading, setIsLoading] = useState(true);
+  const [alerts, setAlerts] = useState(punjabAlerts);
+  const [upvotedAlerts, setUpvotedAlerts] = useState<Set<number>>(new Set([2, 5]));
+
+  // POLISHED: Simulate loading and add interactions
+  useEffect(() => {
+    const timer = setTimeout(() => setIsLoading(false), 800);
+    return () => clearTimeout(timer);
+  }, []);
+
+  const handleUpvote = (alertId: number) => {
+    setUpvotedAlerts(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(alertId)) {
+        newSet.delete(alertId);
+        toast.success('Removed upvote');
+      } else {
+        newSet.add(alertId);
+        toast.success('Added upvote! 👍');
+      }
+      return newSet;
+    });
+
+    // Update alert upvote count
+    setAlerts(prev => prev.map(alert => 
+      alert.id === alertId 
+        ? { ...alert, upvotes: upvotedAlerts.has(alertId) ? alert.upvotes - 1 : alert.upvotes + 1 }
+        : alert
+    ));
+  };
+
+  const filteredAlerts = alerts.filter(alert => {
+    if (filter === 'verified') return alert.verified;
+    if (filter === 'nearby') return alert.location.includes('Chandigarh') || alert.location.includes('Sector');
+    if (filter === 'recent') return parseInt(alert.timeAgo) <= 30; // Recent alerts (30 mins or less)
+    return true;
+  });
 
   return (
     <div className="min-h-screen w-full flex flex-col bg-[#0a1411]">
@@ -152,22 +190,30 @@ export function Alerts() {
               Live Statistics
             </h2>
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-400">Active Alerts</span>
-                <span className="text-lg font-bold text-white">24</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-400">Verified</span>
-                <span className="text-lg font-bold text-[#0fb880]">12</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-400">Contributors</span>
-                <span className="text-lg font-bold text-white">156</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-400">Response Time</span>
-                <span className="text-lg font-bold text-yellow-500">2.3m</span>
-              </div>
+              {[
+                { label: 'Active Alerts', value: '24', color: 'text-white', delay: 0 },
+                { label: 'Verified', value: '12', color: 'text-[#0fb880]', delay: 0.1 },
+                { label: 'Contributors', value: '156', color: 'text-white', delay: 0.2 },
+                { label: 'Response Time', value: '2.3m', color: 'text-yellow-500', delay: 0.3 },
+              ].map((stat, index) => (
+                <motion.div 
+                  key={stat.label}
+                  className="flex items-center justify-between"
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: stat.delay }}
+                >
+                  <span className="text-xs text-gray-400">{stat.label}</span>
+                  <motion.span 
+                    className={`text-lg font-bold ${stat.color}`}
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    transition={{ delay: stat.delay + 0.2, type: 'spring', stiffness: 500 }}
+                  >
+                    {stat.value}
+                  </motion.span>
+                </motion.div>
+              ))}
             </div>
           </div>
 
@@ -176,9 +222,16 @@ export function Alerts() {
               <span className="material-symbols-outlined text-[#0fb880] text-xl">emoji_events</span>
               Top Contributors
             </h2>
-            <div className="space-y-3">
-              {topContributors.map((contributor) => (
-                <div key={contributor.name} className="flex items-center gap-3">
+            <div className="space-y-4">
+              {topContributors.map((contributor, index) => (
+                <motion.div 
+                  key={contributor.name} 
+                  className="flex items-center gap-3 group"
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: index * 0.1 }}
+                  whileHover={{ x: 5 }}
+                >
                   <div className="relative">
                     <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-white text-[10px] font-bold border border-white/20">
                       {contributor.avatar}
@@ -195,8 +248,8 @@ export function Alerts() {
                     <p className="text-sm font-medium text-white">{contributor.name}</p>
                     <p className="text-xs text-gray-500">{contributor.reports} Reports</p>
                   </div>
-                  <span className="text-xs font-bold text-[#0fb880]">{contributor.xp}</span>
-                </div>
+                  <span className="text-xs font-bold text-[#0fb880] group-hover:scale-110 transition-transform inline-block">{contributor.xp}</span>
+                </motion.div>
               ))}
             </div>
           </div>
@@ -213,14 +266,14 @@ export function Alerts() {
               </h2>
               <button 
                 onClick={() => toast.success('Report feature coming soon!')}
-                className="bg-[#0fb880]/20 hover:bg-[#0fb880]/30 text-[#0fb880] text-[10px] font-bold px-3 py-1.5 rounded-full transition-colors"
+                className="bg-[#0fb880]/20 hover:bg-[#0fb880]/30 text-[#0fb880] text-[10px] font-bold px-3 py-1.5 rounded-full transition-all hover:scale-105 active:scale-95"
               >
                 REPORT +
               </button>
             </div>
             <div className="flex gap-2 overflow-x-auto">
               {filterOptions.map((option) => (
-                <button
+                <motion.button
                   key={option.id}
                   onClick={() => setFilter(option.id as any)}
                   className={`whitespace-nowrap px-4 py-1.5 rounded-full text-sm font-medium transition-all flex items-center gap-1 ${
@@ -228,21 +281,88 @@ export function Alerts() {
                       ? 'bg-[#0fb880] text-white shadow-lg shadow-[#0fb880]/20' 
                       : 'bg-white/5 text-gray-400 border border-white/10 hover:bg-white/10 hover:text-white'
                   }`}
+                  whileHover={{ scale: 1.05, y: -2 }}
+                  whileTap={{ scale: 0.95 }}
                 >
                   <span className="material-symbols-outlined text-sm">{option.icon}</span>
                   {option.label}
                   {option.count && (
-                    <span className="text-xs bg-white/10 px-1.5 py-0.5 rounded-full">{option.count}</span>
+                    <motion.span 
+                      className="text-xs bg-white/10 px-1.5 py-0.5 rounded-full"
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      transition={{ type: 'spring', stiffness: 500 }}
+                    >
+                      {option.count}
+                    </motion.span>
                   )}
-                </button>
+                </motion.button>
               ))}
             </div>
           </div>
 
           {/* Alert Cards */}
           <div className="space-y-4">
-            {punjabAlerts.map((alert) => (
-              <div key={alert.id} className="glass-panel rounded-2xl p-5 hover:border-[#0fb880]/20 transition-all cursor-pointer">
+            <AnimatePresence mode="wait">
+              {isLoading ? (
+                <motion.div
+                  key="loading"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="space-y-4"
+                >
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="glass-panel rounded-2xl p-5">
+                      <div className="flex gap-4">
+                        <div className="w-12 h-12 rounded-lg bg-white/10 animate-pulse"></div>
+                        <div className="flex-1 space-y-2">
+                          <div className="h-4 bg-white/10 rounded w-3/4 animate-pulse"></div>
+                          <div className="h-3 bg-white/5 rounded w-full animate-pulse"></div>
+                          <div className="h-3 bg-white/5 rounded w-2/3 animate-pulse"></div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </motion.div>
+              ) : filteredAlerts.length === 0 ? (
+                <motion.div
+                  key="empty"
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -20 }}
+                  className="text-center py-12"
+                >
+                  <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-[#0fb880]/10 flex items-center justify-center">
+                    <span className="material-symbols-outlined text-3xl text-[#0fb880]">search_off</span>
+                  </div>
+                  <h3 className="text-xl font-bold text-white mb-2">No alerts found</h3>
+                  <p className="text-gray-400 mb-6">No {filter === 'all' ? '' : filter} alerts available right now. Check back later!</p>
+                  <button 
+                    onClick={() => setFilter('all')}
+                    className="bg-[#0fb880] hover:bg-[#0fb880]/90 text-white px-6 py-2 rounded-full transition-colors"
+                  >
+                    View All Alerts
+                  </button>
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="alerts"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="space-y-4"
+                >
+                  {filteredAlerts.map((alert, index) => (
+                    <motion.div
+                      key={alert.id}
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -20 }}
+                      transition={{ delay: index * 0.1 }}
+                      className="glass-panel rounded-2xl p-5 hover:border-[#0fb880]/20 transition-all cursor-pointer group"
+                      whileHover={{ scale: 1.01, y: -2 }}
+                    >
                 <div className="flex gap-4">
                   <div className="flex-shrink-0">
                     <div className={`w-12 h-12 rounded-lg bg-white/10 flex items-center justify-center border border-white/20`}>
@@ -287,35 +407,68 @@ export function Alerts() {
                       </div>
                       <div className="flex items-center gap-4">
                         <button 
-                          onClick={() => toast.success(alert.liked ? 'Removed upvote' : 'Added upvote')}
-                          className={`flex items-center gap-1.5 transition-colors ${alert.liked ? 'text-[#0fb880]' : 'text-gray-400 hover:text-[#0fb880]'}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleUpvote(alert.id);
+                          }}
+                          className={`flex items-center gap-1.5 transition-colors ${
+                            upvotedAlerts.has(alert.id) ? 'text-[#0fb880]' : 'text-gray-400 hover:text-[#0fb880]'
+                          } group`}
                         >
-                          <span className="material-symbols-outlined text-lg">{alert.liked ? 'favorite' : 'favorite_border'}</span>
+                          <motion.span 
+                            className="material-symbols-outlined text-lg"
+                            whileHover={{ scale: 1.2 }}
+                            whileTap={{ scale: 0.8 }}
+                          >
+                            {upvotedAlerts.has(alert.id) ? 'favorite' : 'favorite_border'}
+                          </motion.span>
                           <span className="text-xs font-medium">{alert.upvotes}</span>
                         </button>
-                        <button className="flex items-center gap-1.5 text-gray-400 hover:text-white transition-colors">
-                          <span className="material-symbols-outlined text-lg">chat_bubble_outline</span>
+                        <button className="flex items-center gap-1.5 text-gray-400 hover:text-white transition-colors group">
+                          <motion.span 
+                            className="material-symbols-outlined text-lg"
+                            whileHover={{ scale: 1.2 }}
+                            whileTap={{ scale: 0.8 }}
+                          >
+                            chat_bubble_outline
+                          </motion.span>
                           <span className="text-xs font-medium">{alert.comments ?? 0}</span>
                         </button>
-                        <button className="flex items-center gap-1.5 text-gray-400 hover:text-white transition-colors">
-                          <span className="material-symbols-outlined text-lg">share</span>
+                        <button className="flex items-center gap-1.5 text-gray-400 hover:text-white transition-colors group">
+                          <motion.span 
+                            className="material-symbols-outlined text-lg"
+                            whileHover={{ scale: 1.2, rotate: 15 }}
+                            whileTap={{ scale: 0.8 }}
+                          >
+                            share
+                          </motion.span>
                         </button>
                       </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            ))}
+                    </motion.div>
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
 
           {/* Load More */}
-          <button 
-            onClick={() => toast.success('Loading more alerts...')}
-            className="w-full py-3 rounded-xl glass-panel hover:border-[#0fb880]/20 flex items-center justify-center gap-2 text-sm text-gray-300 hover:text-white transition-colors"
-          >
-            <span className="material-symbols-outlined text-lg">expand_more</span>
-            Load More Alerts
-          </button>
+          {!isLoading && filteredAlerts.length > 0 && (
+            <motion.button 
+              onClick={() => toast.success('Loading more alerts...')}
+              className="w-full py-3 rounded-xl glass-panel hover:border-[#0fb880]/20 flex items-center justify-center gap-2 text-sm text-gray-300 hover:text-white transition-colors group"
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3 }}
+            >
+              <span className="material-symbols-outlined text-lg group-hover:rotate-180 transition-transform duration-500">expand_more</span>
+              Load More Alerts
+            </motion.button>
+          )}
         </div>
 
         {/* Right Sidebar - Map & Info */}
