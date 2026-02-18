@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { MapView } from '../components/MapView';
+import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 
 const punjabReports = [
@@ -50,6 +51,53 @@ export function Dashboard() {
   const [co2Offset] = useState(12.8);
   const [rewardTokens] = useState(450);
   const [weeklyProgress] = useState(75);
+  const [isCalculatingRoute, setIsCalculatingRoute] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [animatedStats, setAnimatedStats] = useState({ co2: 0, tokens: 0, progress: 0 });
+
+  // POLISHED: Simulate loading and animate stats on mount - FIXED: Reduced delay
+  useEffect(() => {
+    const timer = setTimeout(() => setIsLoading(false), 300);
+    return () => clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    if (!isLoading) {
+      const duration = 2000;
+      const steps = 60;
+      const increment = {
+        co2: co2Offset / steps,
+        tokens: rewardTokens / steps,
+        progress: weeklyProgress / steps
+      };
+      
+      let currentStep = 0;
+      const interval = setInterval(() => {
+        currentStep++;
+        setAnimatedStats({
+          co2: Math.min(co2Offset, increment.co2 * currentStep),
+          tokens: Math.min(rewardTokens, increment.tokens * currentStep),
+          progress: Math.min(weeklyProgress, increment.progress * currentStep)
+        });
+        
+        if (currentStep >= steps) clearInterval(interval);
+      }, duration / steps);
+      
+      return () => clearInterval(interval);
+    }
+  }, [isLoading, co2Offset, rewardTokens, weeklyProgress]);
+
+  const handleCalculateRoute = async () => {
+    if (!from || !to) {
+      toast.error('Please enter both starting point and destination');
+      return;
+    }
+    setIsCalculatingRoute(true);
+    // Simulate API call
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    setIsCalculatingRoute(false);
+    toast.success('Optimal route calculated! 🚌');
+  };
 
   return (
     <div className="min-h-screen w-full flex flex-col bg-[#0a1411]">
@@ -96,9 +144,9 @@ export function Dashboard() {
       </nav>
 
       {/* Main Content */}
-      <div className="flex-1 grid grid-rows-[0.85fr_0.15fr] min-h-[calc(100vh-4rem)] pb-16 md:pb-0">
+      <div className="flex-1 flex flex-col min-h-[calc(100vh-4rem)] pb-16 md:pb-0">
         {/* Map Section */}
-        <div className="relative w-full overflow-hidden map-bg border-b border-[#0fb880]/10 min-h-[400px]">
+        <div className="relative w-full overflow-hidden map-bg border-b border-[#0fb880]/10 h-[calc(100vh-140px)] md:h-[calc(100vh-160px)]">
           <div className="absolute top-4 right-4 z-20 flex flex-col gap-2">
             <div className="glass-panel p-1 rounded-lg flex flex-col">
               <button className="w-8 h-8 flex items-center justify-center hover:text-[#0fb880] transition-colors text-white">
@@ -120,16 +168,23 @@ export function Dashboard() {
             </div>
           </div>
           
-          {/* Map Component */}
+          {/* Map Component - FIXED: Always show map without loading condition */}
           <div className="w-full h-full">
-            <MapView />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.5 }}
+              className="w-full h-full"
+            >
+              <MapView />
+            </motion.div>
           </div>
         </div>
 
         {/* Bottom Grid Section */}
         <div className="p-4 bg-[#0a1411] grid grid-cols-12 gap-4">
           {/* Route Planner */}
-          <div className="col-span-3 glass-panel rounded-2xl p-5 flex flex-col h-full overflow-hidden">
+          <div className="col-span-12 md:col-span-3 glass-panel rounded-2xl p-5 flex flex-col h-full overflow-hidden">
             <h2 className="text-sm font-bold text-white mb-4 flex items-center gap-2 uppercase tracking-wider">
               <span className="material-symbols-outlined text-[#0fb880] text-xl">route</span>
               Route Planner
@@ -139,7 +194,7 @@ export function Dashboard() {
                 <div className="absolute left-3 top-3.5 w-1.5 h-1.5 rounded-full bg-[#0fb880]"></div>
                 <div className="absolute left-[14px] top-6 bottom-4 w-0.5 bg-gray-700/50"></div>
                 <input 
-                  className="w-full bg-[#122620]/50 border border-white/10 rounded-xl pl-8 pr-4 py-2.5 text-sm focus:ring-1 focus:ring-[#0fb880] focus:border-[#0fb880] outline-none transition-all text-white" 
+                  className="w-full bg-[#122620]/50 border border-white/10 rounded-xl pl-8 pr-4 py-2.5 text-sm focus:ring-1 focus:ring-[#0fb880] focus:border-[#0fb880] outline-none transition-all text-white focus:bg-[#122620]/70" 
                   placeholder="Enter Starting Point" 
                   type="text" 
                   value={from}
@@ -149,7 +204,7 @@ export function Dashboard() {
               <div className="relative">
                 <div className="absolute left-3 top-4 w-1.5 h-1.5 rounded-full bg-red-500"></div>
                 <input 
-                  className="w-full bg-[#122620]/50 border border-white/10 rounded-xl pl-8 pr-4 py-2.5 text-sm focus:ring-1 focus:ring-[#0fb880] focus:border-[#0fb880] outline-none transition-all text-white" 
+                  className="w-full bg-[#122620]/50 border border-white/10 rounded-xl pl-8 pr-4 py-2.5 text-sm focus:ring-1 focus:ring-[#0fb880] focus:border-[#0fb880] outline-none transition-all text-white focus:bg-[#122620]/70" 
                   placeholder="Where to go?" 
                   type="text"
                   value={to}
@@ -157,32 +212,61 @@ export function Dashboard() {
                 />
               </div>
               <div className="grid grid-cols-3 gap-2 py-2">
-                {transportModes.map((mode) => (
-                  <button
-                    key={mode.id}
-                    onClick={() => setSelectedMode(mode.id as any)}
-                    className={`flex flex-col items-center gap-1 p-2 rounded-xl border transition-all ${
-                      selectedMode === mode.id 
-                        ? 'bg-[#0fb880]/10 border-[#0fb880]/20 text-[#0fb880]' 
-                        : 'bg-white/5 border-white/5 text-gray-400 hover:border-[#0fb880]/20 hover:text-[#0fb880]'
-                    }`}
-                  >
+                  {transportModes.map((mode) => (
+                    <motion.button
+                      key={mode.id}
+                      onClick={() => setSelectedMode(mode.id as any)}
+                      className={`flex flex-col items-center gap-1 p-2 rounded-xl border transition-all ${
+                        selectedMode === mode.id 
+                          ? 'bg-[#0fb880]/10 border-[#0fb880]/20 text-[#0fb880]' 
+                          : 'bg-white/5 border-white/5 text-gray-400 hover:border-[#0fb880]/20 hover:text-[#0fb880]'
+                      }`}
+                      whileHover={{ scale: 1.05, y: -2 }}
+                      whileTap={{ scale: 0.95 }}
+                    >
                     <span className="material-symbols-outlined text-xl">{mode.icon}</span>
                     <span className="text-[10px] font-bold">{mode.label}</span>
-                  </button>
-                ))}
+                    </motion.button>
+                  ))}
               </div>
               <button 
-                onClick={() => toast.success('Route calculated!')}
-                className="w-full bg-[#0fb880] hover:bg-[#0fb880]/90 text-white font-bold py-3 rounded-xl shadow-lg shadow-[#0fb880]/20 transition-all active:scale-95 text-sm"
+                onClick={handleCalculateRoute}
+                disabled={isCalculatingRoute}
+                className="w-full bg-[#0fb880] hover:bg-[#0fb880]/90 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-3 rounded-xl shadow-lg shadow-[#0fb880]/20 transition-all active:scale-95 text-sm relative overflow-hidden group"
               >
-                Calculate Optimal Path
+                <AnimatePresence mode="wait">
+                  {isCalculatingRoute ? (
+                    <motion.div
+                      key="loading"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      className="flex items-center justify-center gap-2"
+                    >
+                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                      <span>Calculating...</span>
+                    </motion.div>
+                  ) : (
+                    <motion.div
+                      key="calculate"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      className="flex items-center justify-center gap-2"
+                    >
+                      <span>Calculate Optimal Path</span>
+                      <span className="material-symbols-outlined text-sm">route</span>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+                {/* POLISHED: Added shimmer effect */}
+                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700"></div>
               </button>
             </div>
           </div>
 
           {/* Eco Dashboard */}
-          <div className="col-span-5 glass-panel rounded-2xl p-5 flex items-center justify-between h-full gap-6">
+          <div className="col-span-12 md:col-span-5 glass-panel rounded-2xl p-5 flex items-center justify-between h-full gap-6">
             <div className="flex-1 flex flex-col justify-between h-full">
               <div>
                 <h2 className="text-sm font-bold text-white mb-1 flex items-center gap-2 uppercase tracking-wider">
@@ -198,7 +282,14 @@ export function Dashboard() {
                   </div>
                   <div>
                     <p className="text-[10px] text-gray-500 font-bold uppercase">CO2 Offset</p>
-                    <p className="text-xl font-black text-white leading-none">{co2Offset} kg</p>
+                    <motion.p 
+                      className="text-xl font-black text-white leading-none"
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.2 }}
+                    >
+                      {animatedStats.co2.toFixed(1)} kg
+                    </motion.p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
@@ -207,7 +298,14 @@ export function Dashboard() {
                   </div>
                   <div>
                     <p className="text-[10px] text-gray-500 font-bold uppercase">Reward Tokens</p>
-                    <p className="text-xl font-black text-white leading-none">{rewardTokens} CP</p>
+                    <motion.p 
+                      className="text-xl font-black text-white leading-none"
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.3 }}
+                    >
+                      {Math.floor(animatedStats.tokens)} CP
+                    </motion.p>
                   </div>
                 </div>
               </div>
@@ -217,7 +315,12 @@ export function Dashboard() {
                   <span className="text-[#0fb880]">82% to Level Up</span>
                 </div>
                 <div className="h-2 w-full bg-white/5 rounded-full overflow-hidden">
-                  <div className="h-full bg-gradient-to-r from-[#0fb880]/50 to-[#0fb880] w-[82%] rounded-full shadow-[0_0_8px_rgba(15,184,128,0.4)]"></div>
+                  <motion.div 
+                    className="h-full bg-gradient-to-r from-[#0fb880]/50 to-[#0fb880] rounded-full shadow-[0_0_8px_rgba(15,184,128,0.4)]"
+                    initial={{ width: 0 }}
+                    animate={{ width: '82%' }}
+                    transition={{ delay: 0.5, duration: 1, ease: 'easeOut' }}
+                  ></motion.div>
                 </div>
               </div>
             </div>
@@ -231,22 +334,24 @@ export function Dashboard() {
                   fill="transparent" 
                   r="88" 
                   stroke="currentColor" 
-                  strokeDasharray="553" 
-                  strokeDashoffset={553 - (553 * weeklyProgress) / 100}
+                  strokeDasharray="553"
+                  initial={{ strokeDashoffset: 553 }}
+                  animate={{ strokeDashoffset: 553 - (553 * animatedStats.progress) / 100 }}
+                  transition={{ delay: 0.7, duration: 1.5, ease: 'easeOut' }}
                   strokeLinecap="round" 
                   strokeWidth="12"
                 ></circle>
               </svg>
               <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
                 <span className="text-xs font-bold text-gray-400 uppercase leading-none mb-1">Weekly</span>
-                <span className="text-4xl font-black text-white leading-none">{weeklyProgress}%</span>
+                <span className="text-4xl font-black text-white leading-none">{Math.floor(animatedStats.progress)}%</span>
                 <span className="text-[10px] text-[#0fb880] font-bold mt-1 uppercase">Target Met</span>
               </div>
             </div>
           </div>
 
           {/* Community Feed */}
-          <div className="col-span-4 glass-panel rounded-2xl p-5 flex flex-col h-full overflow-hidden">
+          <div className="col-span-12 md:col-span-4 glass-panel rounded-2xl p-5 flex flex-col h-full overflow-hidden">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-sm font-bold text-white flex items-center gap-2 uppercase tracking-wider">
                 <span className="material-symbols-outlined text-red-400 text-xl">forum</span>
@@ -260,8 +365,17 @@ export function Dashboard() {
               </button>
             </div>
             <div className="flex-1 overflow-y-auto custom-scrollbar space-y-3 pr-2">
-              {punjabReports.map((report, index) => (
-                <div key={index} className="p-3 bg-white/5 rounded-xl border border-white/5 hover:border-[#0fb880]/20 transition-all cursor-pointer">
+              <AnimatePresence>
+                {punjabReports.map((report, index) => (
+                  <motion.div
+                    key={index}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: 20 }}
+                    transition={{ delay: index * 0.1, duration: 0.3 }}
+                    className="p-3 bg-white/5 rounded-xl border border-white/5 hover:border-[#0fb880]/20 transition-all cursor-pointer group"
+                    whileHover={{ scale: 1.02, backgroundColor: 'rgba(255,255,255,0.08)' }}
+                  >
                   <div className="flex justify-between items-start mb-1">
                     <div className="flex items-center gap-2">
                       {report.isSystem ? (
@@ -278,15 +392,18 @@ export function Dashboard() {
                     <span className="text-[10px] text-gray-500">{report.time}</span>
                   </div>
                   <p className="text-xs text-gray-300">{report.text}</p>
-                </div>
-              ))}
-              <button 
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+              <motion.button 
                 onClick={() => toast.success('Loading more reports...')}
-                className="w-full py-2 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center gap-2 text-sm text-gray-300 hover:text-white transition-colors"
+                className="w-full py-2 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center gap-2 text-sm text-gray-300 hover:text-white transition-colors group"
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
               >
-                <span className="material-symbols-outlined text-lg">expand_more</span>
+                <span className="material-symbols-outlined text-lg group-hover:rotate-180 transition-transform duration-500">expand_more</span>
                 Read More
-              </button>
+              </motion.button>
             </div>
           </div>
         </div>

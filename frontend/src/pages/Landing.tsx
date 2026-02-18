@@ -1,6 +1,21 @@
 import { Link } from 'react-router-dom';
+import { motion } from 'framer-motion';
 
 export function Landing() {
+  // POLISHED: Animation variants for smooth transitions
+  const fadeInUp = {
+    initial: { opacity: 0, y: 30 },
+    animate: { opacity: 1, y: 0 }
+  };
+
+  const staggerContainer = {
+    animate: {
+      transition: {
+        staggerChildren: 0.1
+      }
+    }
+  };
+
   return (
     <div className="bg-background-light dark:bg-background-dark text-gray-900 dark:text-gray-100 font-display antialiased overflow-x-hidden selection:bg-primary selection:text-white">
       {/* Navigation */}
@@ -37,125 +52,336 @@ export function Landing() {
       {/* Hero Section */}
       <section className="relative pt-32 pb-20 lg:pt-48 lg:pb-32 overflow-hidden">
         <div className="absolute inset-0 hero-bg-pattern pointer-events-none" />
-        <div className="absolute top-0 right-0 -mr-20 -mt-20 w-[600px] h-[600px] bg-primary/10 rounded-full blur-[100px] pointer-events-none" />
-        <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-[500px] h-[500px] bg-secondary/10 rounded-full blur-[80px] pointer-events-none" />
+        <motion.div 
+          className="absolute top-0 right-0 -mr-20 -mt-20 w-[600px] h-[600px] bg-primary/10 rounded-full blur-[100px] pointer-events-none"
+          animate={{ 
+            x: [0, 30, 0], 
+            y: [0, -30, 0],
+          }}
+          transition={{ 
+            duration: 8, 
+            repeat: Infinity, 
+            ease: 'easeInOut' 
+          }}
+        />
+        <motion.div 
+          className="absolute bottom-0 left-0 -ml-20 -mb-20 w-[500px] h-[500px] bg-secondary/10 rounded-full blur-[80px] pointer-events-none"
+          animate={{ 
+            x: [0, -20, 0], 
+            y: [0, 20, 0],
+          }}
+          transition={{ 
+            duration: 6, 
+            repeat: Infinity, 
+            ease: 'easeInOut',
+            delay: 2
+          }}
+        />
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 text-center">
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full glass-card border border-primary/20 mb-8 animate-fade-in-up">
+          <motion.div 
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-full glass-card border border-primary/20 mb-8"
+            {...fadeInUp}
+            transition={{ delay: 0.2 }}
+          >
             <span className="relative flex h-3 w-3">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
               <span className="relative inline-flex rounded-full h-3 w-3 bg-primary" />
             </span>
             <span className="text-sm font-medium text-primary tracking-wide uppercase">Live in Rajpura & Chandigarh</span>
-          </div>
-          <h1 className="text-5xl md:text-7xl lg:text-8xl font-extrabold tracking-tight mb-8 leading-tight">
+          </motion.div>
+          <motion.h1 
+            className="text-5xl md:text-7xl lg:text-8xl font-extrabold tracking-tight mb-8 leading-tight"
+            initial={{ opacity: 0, y: 50 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3, duration: 0.8, ease: 'easeOut' }}
+          >
             Optimize Your Commute, <br />
             <span className="text-gradient">Save the Planet</span>
-          </h1>
-          <p className="mt-4 max-w-2xl mx-auto text-xl text-gray-400 mb-10 leading-relaxed">
+          </motion.h1>
+          <motion.p 
+            className="mt-4 max-w-2xl mx-auto text-xl text-gray-400 mb-10 leading-relaxed"
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.5, duration: 0.6 }}
+          >
             Join the largest community-driven transit network in the region. Real-time updates, eco-tracking, and rewards for every mile you save.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
-            <Link
-              className="w-full sm:w-auto px-8 py-4 rounded-full bg-primary text-white font-bold text-lg btn-glow flex items-center justify-center gap-2"
-              to="/register"
+          </motion.p>
+          <motion.div 
+            className="flex flex-col sm:flex-row gap-4 justify-center items-center"
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.7, duration: 0.6 }}
+          >
+            <motion.div
+              className="w-full sm:w-auto"
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
             >
-              Get Started Free
-              <span className="material-icons text-sm">arrow_forward</span>
-            </Link>
-            <a
-              className="w-full sm:w-auto px-8 py-4 rounded-full glass-card text-white font-medium hover:bg-white/5 transition-colors border border-white/10 flex items-center justify-center gap-2"
-              href="#how-it-works"
+              <Link
+                className="w-full sm:w-auto px-8 py-4 rounded-full bg-primary text-white font-bold text-lg btn-glow flex items-center justify-center gap-2 group"
+                to="/register"
+              >
+                Get Started Free
+                <motion.span 
+                  className="material-icons text-sm group-hover:translate-x-1 transition-transform"
+                >
+                  arrow_forward
+                </motion.span>
+              </Link>
+            </motion.div>
+            <motion.div
+              className="w-full sm:w-auto"
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
             >
-              <span className="material-icons text-primary">play_circle</span>
-              See How It Works
-            </a>
-          </div>
+              <a
+                className="w-full sm:w-auto px-8 py-4 rounded-full glass-card text-white font-medium hover:bg-white/5 transition-colors border border-white/10 flex items-center justify-center gap-2 group"
+                href="#how-it-works"
+              >
+                <motion.span 
+                  className="material-icons text-primary group-hover:scale-110 transition-transform"
+                >
+                  play_circle
+                </motion.span>
+                See How It Works
+              </a>
+            </motion.div>
+          </motion.div>
 
           {/* Floating Abstract UI Element - Map/App */}
-          <div className="mt-20 relative mx-auto max-w-5xl rounded-2xl overflow-hidden glass-card shadow-2xl shadow-primary/10 border border-white/5 group">
+          <motion.div 
+            className="mt-20 relative mx-auto max-w-5xl rounded-2xl overflow-hidden glass-card shadow-2xl shadow-primary/10 border border-white/5 group"
+            initial={{ opacity: 0, y: 50 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.9, duration: 0.8 }}
+            whileHover={{ y: -10 }}
+          >
             <div className="absolute inset-0 bg-gradient-to-t from-background-dark via-transparent to-transparent z-10" />
             <div className="h-64 md:h-96 w-full relative bg-surface-dark overflow-hidden map-lines opacity-60">
               <svg className="absolute inset-0 w-full h-full" xmlns="http://www.w3.org/2000/svg">
-                <path className="animate-pulse opacity-80" d="M100,300 Q250,100 400,200 T800,150" fill="none" stroke="#0fb880" strokeDasharray="10 5" strokeLinecap="round" strokeWidth="3" />
-                <path className="opacity-60" d="M50,150 Q200,400 500,300 T900,350" fill="none" stroke="#0ea5e9" strokeDasharray="8 8" strokeLinecap="round" strokeWidth="3" />
-                <circle className="animate-ping" cx="100" cy="300" fill="#0fb880" r="6" />
+                <motion.path 
+                  className="opacity-80" 
+                  d="M100,300 Q250,100 400,200 T800,150" 
+                  fill="none" 
+                  stroke="#0fb880" 
+                  strokeDasharray="10 5" 
+                  strokeLinecap="round" 
+                  strokeWidth="3"
+                  initial={{ pathLength: 0 }}
+                  animate={{ pathLength: 1 }}
+                  transition={{ delay: 1.2, duration: 2, ease: 'easeInOut' }}
+                />
+                <motion.path 
+                  className="opacity-60" 
+                  d="M50,150 Q200,400 500,300 T900,350" 
+                  fill="none" 
+                  stroke="#0ea5e9" 
+                  strokeDasharray="8 8" 
+                  strokeLinecap="round" 
+                  strokeWidth="3"
+                  initial={{ pathLength: 0 }}
+                  animate={{ pathLength: 1 }}
+                  transition={{ delay: 1.4, duration: 2, ease: 'easeInOut' }}
+                />
+                <motion.circle 
+                  className="" 
+                  cx="100" 
+                  cy="300" 
+                  fill="#0fb880" 
+                  r="6"
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  transition={{ delay: 1.6, type: 'spring', stiffness: 500 }}
+                />
                 <circle cx="100" cy="300" fill="#fff" r="4" />
-                <circle cx="800" cy="150" fill="#0ea5e9" r="6" />
+                <motion.circle 
+                  cx="800" 
+                  cy="150" 
+                  fill="#0ea5e9" 
+                  r="6"
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  transition={{ delay: 1.8, type: 'spring', stiffness: 500 }}
+                />
                 <circle cx="800" cy="150" fill="#fff" r="4" />
               </svg>
             </div>
-            <div className="absolute bottom-0 left-0 right-0 p-8 z-20 flex justify-between items-end">
+            <motion.div 
+              className="absolute bottom-0 left-0 right-0 p-8 z-20 flex justify-between items-end"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 2, duration: 0.6 }}
+            >
               <div className="text-left">
                 <h3 className="text-2xl font-bold text-white">Active Route: Sector 17 to Rajpura Bus Stand</h3>
                 <p className="text-primary flex items-center gap-1">
-                  <span className="material-icons text-sm">eco</span> 2.4kg CO2 Saved Today
+                  <motion.span 
+                    className="material-icons text-sm"
+                    animate={{ rotate: [0, 10, -10, 0] }}
+                    transition={{ duration: 2, repeat: Infinity, repeatDelay: 3 }}
+                  >
+                    eco
+                  </motion.span> 
+                  2.4kg CO2 Saved Today
                 </p>
               </div>
               <div className="hidden md:block">
                 <div className="bg-background-dark/80 backdrop-blur-md p-4 rounded-xl border border-white/10 flex gap-4">
                   <div className="text-center">
                     <p className="text-xs text-gray-400 uppercase">Time Saved</p>
-                    <p className="text-xl font-bold text-white">14 min</p>
+                    <motion.p 
+                      className="text-xl font-bold text-white"
+                      initial={{ opacity: 0, scale: 0.5 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ delay: 2.2, type: 'spring', stiffness: 500 }}
+                    >
+                      14 min
+                    </motion.p>
                   </div>
                   <div className="w-px bg-white/10" />
                   <div className="text-center">
                     <p className="text-xs text-gray-400 uppercase">Points</p>
-                    <p className="text-xl font-bold text-primary">+450</p>
+                    <motion.p 
+                      className="text-xl font-bold text-primary"
+                      initial={{ opacity: 0, scale: 0.5 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ delay: 2.4, type: 'spring', stiffness: 500 }}
+                    >
+                      +450
+                    </motion.p>
                   </div>
                 </div>
               </div>
-            </div>
-          </div>
+            </motion.div>
+          </motion.div>
         </div>
       </section>
 
       {/* Stats Ticker */}
-      <div className="border-y border-white/5 bg-background-dark/50 backdrop-blur-sm overflow-hidden py-4">
-        <div className="flex justify-center items-center gap-8 md:gap-16 text-gray-400 text-sm font-medium uppercase tracking-widest whitespace-nowrap flex-wrap">
-          <span className="flex items-center gap-2"><span className="text-primary font-bold text-lg">15,000+</span> Daily Commuters</span>
+      <motion.div 
+        className="border-y border-white/5 bg-background-dark/50 backdrop-blur-sm overflow-hidden py-4"
+        initial={{ opacity: 0 }}
+        whileInView={{ opacity: 1 }}
+        transition={{ duration: 0.6 }}
+        viewport={{ once: true }}
+      >
+        <motion.div 
+          className="flex justify-center items-center gap-8 md:gap-16 text-gray-400 text-sm font-medium uppercase tracking-widest whitespace-nowrap flex-wrap"
+          variants={staggerContainer}
+          initial="initial"
+          whileInView="animate"
+          viewport={{ once: true }}
+        >
+          <motion.div variants={fadeInUp} className="flex items-center gap-2">
+            <motion.span 
+              className="text-primary font-bold text-lg"
+              initial={{ scale: 0 }}
+              whileInView={{ scale: 1 }}
+              transition={{ type: 'spring', stiffness: 500 }}
+              viewport={{ once: true }}
+            >
+              15,000+
+            </motion.span> 
+            Daily Commuters
+          </motion.div>
           <span className="w-1 h-1 bg-gray-600 rounded-full hidden md:inline" />
-          <span className="flex items-center gap-2"><span className="text-secondary font-bold text-lg">45 Tons</span> CO2 Reduced</span>
+          <motion.div variants={fadeInUp} className="flex items-center gap-2">
+            <motion.span 
+              className="text-secondary font-bold text-lg"
+              initial={{ scale: 0 }}
+              whileInView={{ scale: 1 }}
+              transition={{ type: 'spring', stiffness: 500, delay: 0.1 }}
+              viewport={{ once: true }}
+            >
+              45 Tons
+            </motion.span> 
+            CO2 Reduced
+          </motion.div>
           <span className="w-1 h-1 bg-gray-600 rounded-full hidden md:inline" />
-          <span className="flex items-center gap-2"><span className="text-primary font-bold text-lg">4 Cities</span> Covered</span>
-        </div>
-      </div>
+          <motion.div variants={fadeInUp} className="flex items-center gap-2">
+            <motion.span 
+              className="text-primary font-bold text-lg"
+              initial={{ scale: 0 }}
+              whileInView={{ scale: 1 }}
+              transition={{ type: 'spring', stiffness: 500, delay: 0.2 }}
+              viewport={{ once: true }}
+            >
+              4 Cities
+            </motion.span> 
+            Covered
+          </motion.div>
+        </motion.div>
+      </motion.div>
 
       {/* How It Works */}
       <section className="py-24 relative" id="how-it-works">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-16">
+          <motion.div 
+            className="text-center mb-16"
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6 }}
+            viewport={{ once: true }}
+          >
             <h2 className="text-3xl md:text-4xl font-bold mb-4">Smart Commuting in <span className="text-primary">3 Steps</span></h2>
             <p className="text-gray-400 max-w-xl mx-auto">Our algorithm processes thousands of data points to find you the quickest, greenest path.</p>
-          </div>
+          </motion.div>
           <div className="relative grid md:grid-cols-3 gap-8">
             <div className="hidden md:block absolute top-12 left-0 w-full h-0.5 bg-gradient-to-r from-primary/0 via-primary/30 to-primary/0 z-0" />
             {/* Step 1 */}
-            <div className="relative z-10 flex flex-col items-center text-center group">
-              <div className="w-24 h-24 rounded-2xl glass-card border border-primary/30 flex items-center justify-center mb-6 shadow-[0_0_30px_rgba(15,184,128,0.15)] group-hover:shadow-[0_0_30px_rgba(15,184,128,0.3)] transition-all duration-500">
+            <motion.div 
+              className="relative z-10 flex flex-col items-center text-center group"
+              initial={{ opacity: 0, y: 50 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.1, duration: 0.6 }}
+              viewport={{ once: true }}
+            >
+              <motion.div 
+                className="w-24 h-24 rounded-2xl glass-card border border-primary/30 flex items-center justify-center mb-6 shadow-[0_0_30px_rgba(15,184,128,0.15)] group-hover:shadow-[0_0_30px_rgba(15,184,128,0.3)] transition-all duration-500"
+                whileHover={{ scale: 1.05, rotate: 5 }}
+              >
                 <span className="material-icons text-4xl text-primary">add_location_alt</span>
-              </div>
+              </motion.div>
               <div className="bg-background-dark px-4 py-1 rounded-full text-xs font-bold text-primary border border-primary/20 mb-4 uppercase tracking-wider">Step 01</div>
               <h3 className="text-xl font-bold text-white mb-2">Share Location</h3>
               <p className="text-gray-400 text-sm leading-relaxed px-4">Input your start and end points. We utilize community data to pinpoint exact stop locations.</p>
-            </div>
+            </motion.div>
             {/* Step 2 */}
-            <div className="relative z-10 flex flex-col items-center text-center group">
-              <div className="w-24 h-24 rounded-2xl glass-card border border-secondary/30 flex items-center justify-center mb-6 shadow-[0_0_30px_rgba(14,165,233,0.15)] group-hover:shadow-[0_0_30px_rgba(14,165,233,0.3)] transition-all duration-500">
+            <motion.div 
+              className="relative z-10 flex flex-col items-center text-center group"
+              initial={{ opacity: 0, y: 50 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2, duration: 0.6 }}
+              viewport={{ once: true }}
+            >
+              <motion.div 
+                className="w-24 h-24 rounded-2xl glass-card border border-secondary/30 flex items-center justify-center mb-6 shadow-[0_0_30px_rgba(14,165,233,0.15)] group-hover:shadow-[0_0_30px_rgba(14,165,233,0.3)] transition-all duration-500"
+                whileHover={{ scale: 1.05, rotate: -5 }}
+              >
                 <span className="material-icons text-4xl text-secondary">alt_route</span>
-              </div>
+              </motion.div>
               <div className="bg-background-dark px-4 py-1 rounded-full text-xs font-bold text-secondary border border-secondary/20 mb-4 uppercase tracking-wider">Step 02</div>
               <h3 className="text-xl font-bold text-white mb-2">Get Optimized Routes</h3>
               <p className="text-gray-400 text-sm leading-relaxed px-4">Receive real-time suggestions combining bus, metro, and walking for the fastest trip.</p>
-            </div>
+            </motion.div>
             {/* Step 3 */}
-            <div className="relative z-10 flex flex-col items-center text-center group">
-              <div className="w-24 h-24 rounded-2xl glass-card border border-primary/30 flex items-center justify-center mb-6 shadow-[0_0_30px_rgba(15,184,128,0.15)] group-hover:shadow-[0_0_30px_rgba(15,184,128,0.3)] transition-all duration-500">
+            <motion.div 
+              className="relative z-10 flex flex-col items-center text-center group"
+              initial={{ opacity: 0, y: 50 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3, duration: 0.6 }}
+              viewport={{ once: true }}
+            >
+              <motion.div 
+                className="w-24 h-24 rounded-2xl glass-card border border-primary/30 flex items-center justify-center mb-6 shadow-[0_0_30px_rgba(15,184,128,0.15)] group-hover:shadow-[0_0_30px_rgba(15,184,128,0.3)] transition-all duration-500"
+                whileHover={{ scale: 1.05, rotate: 5 }}
+              >
                 <span className="material-icons text-4xl text-primary">savings</span>
-              </div>
+              </motion.div>
               <div className="bg-background-dark px-4 py-1 rounded-full text-xs font-bold text-primary border border-primary/20 mb-4 uppercase tracking-wider">Step 03</div>
               <h3 className="text-xl font-bold text-white mb-2">Track & Earn</h3>
               <p className="text-gray-400 text-sm leading-relaxed px-4">Monitor your carbon savings and earn points redeemable at local partner stores.</p>
-            </div>
+            </motion.div>
           </div>
         </div>
       </section>

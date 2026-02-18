@@ -1,18 +1,72 @@
 {
-  "name": "CommuteSmart",
+  "name": "CommuteSmart - Punjab Transit Optimizer",
   "short_name": "CommuteSmart",
   "description": "Real-time public transport optimizer for Punjab - Smart commutes, greener planet",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0f172a",
-  "theme_color": "#10b981",
+  "background_color": "#0a1411",
+  "theme_color": "#0fb880",
   "orientation": "portrait-primary",
+  "scope": "/",
+  "lang": "en",
+  "categories": ["transportation", "navigation", "utilities", "lifestyle"],
+  "shortcuts": [
+    {
+      "name": "Dashboard",
+      "short_name": "Dashboard",
+      "description": "View your commute dashboard",
+      "url": "/dashboard",
+      "icons": [{ "src": "/favicon.svg", "sizes": "any" }]
+    },
+    {
+      "name": "Community Alerts",
+      "short_name": "Alerts",
+      "description": "Check traffic and transit alerts",
+      "url": "/alerts",
+      "icons": [{ "src": "/favicon.svg", "sizes": "any" }]
+    },
+    {
+      "name": "Profile",
+      "short_name": "Profile",
+      "description": "View your eco-impact profile",
+      "url": "/profile",
+      "icons": [{ "src": "/favicon.svg", "sizes": "any" }]
+    }
+  ],
   "icons": [
     {
       "src": "/favicon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/screenshot-desktop.png",
+      "sizes": "1280x720",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "CommuteSmart Dashboard - Real-time transit tracking"
+    },
+    {
+      "src": "/screenshot-mobile.png",
+      "sizes": "375x667",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "CommuteSmart Mobile - Route planning on the go"
     }
   ]
 }
