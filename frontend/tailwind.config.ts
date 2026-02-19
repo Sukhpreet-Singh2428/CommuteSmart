@@ -15,8 +15,8 @@ export default {
         secondary: '#0ea5e9',
         'accent-teal': '#14b8a6',
         'background-light': '#f6f8f7',
-        'background-dark': '#10221c',
-        'surface-dark': '#162e26',
+        'background-dark': '#0a1411',
+        'surface-dark': '#11221c',
         eco: {
           emerald: '#10b981',
           teal: '#0ea5e9',
