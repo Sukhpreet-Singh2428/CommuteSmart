@@ -50,7 +50,7 @@ exports.login = async (req, res) => {
             return res.status(401).json({success: false, message: "Invalid credentials"});
         }
 
-        const token = jwt.sign({id: user._id}, process.env.JWT_SECRET, {expires: '7d'});
+        const token = jwt.sign({id: user._id}, process.env.JWT_SECRET, {expiresIn: '7d'});
 
         res.cookie('token', token, {
             httpOnly: true,
@@ -65,6 +65,6 @@ exports.login = async (req, res) => {
             user: {id: user._id, email: user.email, points: user.points}
         });
     } catch(err){
-        res.status(500).json({success: false, message: "Serer error"});
+        res.status(500).json({success: false, message: err.message});
     }
 };
