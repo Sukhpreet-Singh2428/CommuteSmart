@@ -1,4 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import axios from 'axios';
+
+// CONNECTED TO BACKEND: Set global axios default for cookie handling
+axios.defaults.withCredentials = true;
 
 interface User {
   id: string;
@@ -20,47 +24,84 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const MOCK_USER: User = {
-  id: '1',
-  name: 'Rahul Singh',
-  email: 'rahul@example.com',
-  xp: 1240,
-  co2Saved: 45,
-};
-
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
 
   useEffect(() => {
-    const t = localStorage.getItem('commutesmart_token');
-    if (t) {
-      setToken(t);
-      setUser(MOCK_USER);
+    // CONNECTED TO BACKEND: Check authentication status on app load
+    // Since we're using httpOnly cookies, we need to verify with the backend
+    const checkAuth = async () => {
+      try {
+        const response = await axios.get('http://localhost:5000/api/auth/me', {
+          withCredentials: true
+        });
+        setUser(response.data.user);
+      } catch (error) {
+        // User is not authenticated, clear state
+        setUser(null);
+        setToken(null);
+      }
+    };
+    
+    checkAuth();
+  }, []);
+
+  const login = useCallback(async (email: string, password: string) => {
+    try {
+      // CONNECTED TO BACKEND: Call real login API with axios and withCredentials
+      const response = await axios.post('http://localhost:5000/api/auth/login', {
+        email,
+        password
+      }, {
+        withCredentials: true // Ensure cookies are sent and received
+      });
+      
+      // User data will be managed by the JWT token in httpOnly cookie
+      // Backend sends user data in response body
+      setUser(response.data.user);
+    } catch (error: any) {
+      // CONNECTED TO BACKEND: Proper error handling with backend error messages
+      const errorMessage = error.response?.data?.message || 'Login failed';
+      throw new Error(errorMessage);
     }
   }, []);
 
-  const login = useCallback(async (_email: string, _password: string) => {
-    // Stub: simulate API call
-    await new Promise((r) => setTimeout(r, 500));
-    const t = 'mock-jwt-token-' + Date.now();
-    localStorage.setItem('commutesmart_token', t);
-    setToken(t);
-    setUser(MOCK_USER);
+  const register = useCallback(async (name: string, email: string, password: string) => {
+    try {
+      // CONNECTED TO BACKEND: Call real signup API with axios and withCredentials
+      const response = await axios.post('http://localhost:5000/api/auth/signup', {
+        name,
+        email,
+        password
+      }, {
+        withCredentials: true // Ensure cookies are sent and received
+      });
+      
+      // User data will be managed by the JWT token in httpOnly cookie
+      // Backend sends user data in response body
+      setUser(response.data.user);
+    } catch (error: any) {
+      // CONNECTED TO BACKEND: Proper error handling with backend error messages
+      const errorMessage = error.response?.data?.message || 'Registration failed';
+      throw new Error(errorMessage);
+    }
   }, []);
 
-  const register = useCallback(async (name: string, email: string, _password: string) => {
-    await new Promise((r) => setTimeout(r, 500));
-    const t = 'mock-jwt-token-' + Date.now();
-    localStorage.setItem('commutesmart_token', t);
-    setToken(t);
-    setUser({ ...MOCK_USER, name, email });
-  }, []);
-
-  const logout = useCallback(() => {
-    localStorage.removeItem('commutesmart_token');
-    setToken(null);
-    setUser(null);
+  const logout = useCallback(async () => {
+    try {
+      // CONNECTED TO BACKEND: Call logout API to clear server-side session
+      await axios.post('http://localhost:5000/api/auth/logout', {}, {
+        withCredentials: true
+      });
+    } catch (error) {
+      // Even if logout API fails, clear local state
+      console.error('Logout API failed:', error);
+    } finally {
+      // Clear local state regardless of API call success
+      setUser(null);
+      setToken(null);
+    }
   }, []);
 
   return (

@@ -26,9 +26,12 @@ export function Register() {
       setShowConfetti(true);
       toast.success('Green account created! Welcome to CommuteSmart.');
       setTimeout(() => setShowConfetti(false), 2500);
+      // CONNECTED TO BACKEND: Redirect to dashboard on successful signup
       navigate('/dashboard');
-    } catch {
-      toast.error('Registration failed');
+    } catch (error: any) {
+      // CONNECTED TO BACKEND: Show specific backend error message
+      const errorMessage = error.message || 'Registration failed';
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }
