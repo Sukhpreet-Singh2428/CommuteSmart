@@ -4,8 +4,8 @@ import { io, Socket } from 'socket.io-client';
 import toast from 'react-hot-toast';
 
 // CONNECTED TO BACKEND: API base URL and Socket.io connection
-const API_BASE_URL = 'http://localhost:5000';
-const SOCKET_URL = 'http://localhost:5000';
+const API_BASE_URL = import.meta.env.VITE_API_URL;
+const SOCKET_URL = import.meta.env.VITE_API_URL;
 
 // Bus data structure from backend API
 export interface Bus {

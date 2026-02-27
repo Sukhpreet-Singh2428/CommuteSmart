@@ -295,7 +295,7 @@ export function Dashboard() {
         try {
           // Try backend route suggestion as fallback
           const routeResponse = await axios.post(
-            'http://localhost:5000/api/routes/suggest',
+            `${import.meta.env.VITE_API_URL}/api/routes/suggest`,
             {
               start: { latitude: startLat, longitude: startLng },
               end: { latitude: endLat, longitude: endLng }
@@ -370,7 +370,7 @@ export function Dashboard() {
     try {
       // Call API with 8km radius (converted to degrees)
       const response = await axios.get(
-        `http://localhost:5000/api/location/nearby?lat=${center[0]}&long=${center[1]}`,
+        `${import.meta.env.VITE_API_URL}/api/location/nearby?lat=${center[0]}&long=${center[1]}`,
         { withCredentials: true }
       );
       
