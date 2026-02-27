@@ -97,7 +97,7 @@ const filterOptions = [
 
 export function Alerts() {
   const [filter, setFilter] = useState<'all' | 'verified' | 'nearby' | 'recent'>('all');
-  const { user } = useAuth();
+  const { } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
   const [alerts, setAlerts] = useState(punjabAlerts);
   const [upvotedAlerts, setUpvotedAlerts] = useState<Set<number>>(new Set([2, 5]));
@@ -195,7 +195,7 @@ export function Alerts() {
                 { label: 'Verified', value: '12', color: 'text-[#0fb880]', delay: 0.1 },
                 { label: 'Contributors', value: '156', color: 'text-white', delay: 0.2 },
                 { label: 'Response Time', value: '2.3m', color: 'text-yellow-500', delay: 0.3 },
-              ].map((stat, index) => (
+              ].map((stat) => (
                 <motion.div 
                   key={stat.label}
                   className="flex items-center justify-between"
