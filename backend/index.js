@@ -2,21 +2,39 @@ const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const cookieParser = require('cookie-parser');
+const http = require('http');
+const socketIo = require('socket.io');
+
 const connectDB = require('./config/db');
 
 dotenv.config();
 connectDB();
 
 const app = express();
+const server = http.createServer(app);
+
+//? Initialize Socket.io
+const io = socketIo(server, {
+    cors: {
+        origin: "http://localhost:3000",
+        credentials: true
+    }
+});
 
 //? Middleware
 app.use(cors({ origin: "http://localhost:3000", credentials: true}));
 app.use(express.json());
 app.use(cookieParser());
 
+app.set('io', io);    //? io available glovally in controllers
+
 //? Routes
 const authRoutes = require('./routes/authRoutes');
 app.use('/api/auth', authRoutes);
+
+const locationRoutes = require('./routes/location');
+app.use('/api/location', locationRoutes);
+
 
 app.get('/', (req, res) => {
     res.json({message: "CommuteSmart Backend is Running !"});

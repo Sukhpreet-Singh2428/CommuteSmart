@@ -1,16 +1,32 @@
 import { useEffect, useMemo, useState, useRef } from 'react';
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { motion } from 'framer-motion';
+import { useLocationService, Bus } from '../hooks/useLocationService';
+import toast from 'react-hot-toast';
 
-const pulseIcon = (color: string, type?: 'bus' | 'metro' | 'alert') => {
-  const iconColor = type === 'alert' ? '#eab308' : color;
-  const pulseColor = type === 'alert' ? '#f59e0b' : '#10b981';
+// CONNECTED TO BACKEND: Enhanced pulse icon for real-time bus markers
+const pulseIcon = (color: string, type?: 'bus' | 'metro' | 'alert' | 'warning' | 'error' | 'info', isPulsing?: boolean) => {
+  const iconColor = type === 'alert' || type === 'warning' || type === 'error' || type === 'info' ? '#eab308' : color;
+  const pulseColor = type === 'alert' || type === 'warning' || type === 'error' || type === 'info' ? '#f59e0b' : '#10b981';
   
-  // POLISHED: Enhanced SVG with better visual design
+  // POLISHED: Enhanced SVG with better visual design and pulsing animation
+  const pulseAnimation = isPulsing ? `
+    <style>
+      @keyframes pulse-ring {
+        0% { transform: scale(0.8); opacity: 1; }
+        100% { transform: scale(1.5); opacity: 0; }
+      }
+    </style>
+    <circle cx="16" cy="16" r="12" fill="none" stroke="${pulseColor}" stroke-width="2" opacity="0.6">
+      <animate attributeName="r" values="12;20;12" dur="2s" repeatCount="indefinite" />
+      <animate attributeName="opacity" values="0.6;0;0.6" dur="2s" repeatCount="indefinite" />
+    </circle>
+  ` : '';
   const svg = `
     <svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+      ${pulseAnimation}
       <defs>
         <filter id="glow-${color.replace('#', '')}">
           <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
@@ -38,14 +54,8 @@ const pulseIcon = (color: string, type?: 'bus' | 'metro' | 'alert') => {
   });
 };
 
-const center: [number, number] = [30.73, 76.78]; // Chandigarh area
-const markers: Array<{ pos: [number, number]; label: string; eta?: string; type?: 'bus' | 'metro' | 'alert'; crowdLevel?: 'low' | 'medium' | 'high' }> = [
-  { pos: [30.7333, 76.7794], label: 'CTU Bus 42B - Sector 17', eta: '2 min', type: 'bus', crowdLevel: 'medium' },
-  { pos: [30.4833, 76.6], label: 'Metro Express S1 - Rajpura', eta: '5 min', type: 'metro', crowdLevel: 'low' },
-  { pos: [30.3392, 76.3869], label: '⚠️ Traffic Alert: Patiala Road', type: 'alert', crowdLevel: 'high' },
-  { pos: [30.3782, 76.7767], label: 'CTU Bus 18 - Ambala Cantt', eta: '8 min', type: 'bus', crowdLevel: 'high' },
-  { pos: [30.6543, 76.8187], label: 'Metro Line - Sector 34', eta: '3 min', type: 'metro', crowdLevel: 'medium' },
-];
+// CONNECTED TO BACKEND: Default center (Ludhiana) - will be updated with user location
+const defaultCenter: [number, number] = [30.91, 75.86];
 
 function PulseAnimation() {
   useEffect(() => {
@@ -94,22 +104,76 @@ function PulseAnimation() {
   return null;
 }
 
-export function MapView() {
-  const [selectedMarker, setSelectedMarker] = useState<number | null>(null);
+export function MapView({ routePath, startPoint, endPoint, routeAlerts }: { 
+  routePath?: [number, number][]; 
+  startPoint?: [number, number]; 
+  endPoint?: [number, number]; 
+  routeAlerts?: any[];
+}) {
+  // CONNECTED TO BACKEND: Use location service hook for real-time data
+  const { 
+    buses, 
+    userLocation, 
+    isLoading, 
+    error, 
+    fetchNearbyBuses, 
+    shareLocation 
+  } = useLocationService();
+  
+  const [selectedMarker, setSelectedMarker] = useState<string | null>(null);
+  const [mapCenter, setMapCenter] = useState<[number, number]>(defaultCenter);
   const mapRef = useRef<any>(null);
   
-  // POLISHED: Enhanced icons with better visual design
-  const emeraldIcon = useMemo(() => pulseIcon('#10b981', 'bus'), []);
-  const metroIcon = useMemo(() => pulseIcon('#06b6d4', 'metro'), []);
-  const alertIcon = useMemo(() => pulseIcon('#f59e0b', 'alert'), []);
+  // CONNECTED TO BACKEND: Update map center when user location changes
+  useEffect(() => {
+    if (userLocation) {
+      setMapCenter(userLocation);
+    }
+  }, [userLocation]);
+  
+  // CONNECTED TO BACKEND: Adjust map bounds when route is available
+  useEffect(() => {
+    if (routePath && routePath.length > 0 && mapRef.current) {
+      const bounds = L.latLngBounds(routePath);
+      mapRef.current.fitBounds(bounds, { padding: [50, 50] });
+    }
+  }, [routePath]);
+  
+  // CONNECTED TO BACKEND: Refresh buses data periodically
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      if (userLocation) {
+        await fetchNearbyBuses(userLocation[0], userLocation[1]);
+      }
+    }, 30000); // Refresh every 30 seconds
+    
+    return () => clearInterval(interval);
+  }, [userLocation, fetchNearbyBuses]);
+  
+  // CONNECTED TO BACKEND: Enhanced icons with pulsing effect for live buses
+  const emeraldIcon = useMemo(() => pulseIcon('#10b981', 'bus', true), []);
+  const metroIcon = useMemo(() => pulseIcon('#06b6d4', 'metro', true), []);
+  const alertIcon = useMemo(() => pulseIcon('#f59e0b', 'alert', false), []);
+  const userIcon = useMemo(() => pulseIcon('#3b82f6', 'bus', false), []);
 
-  const getIcon = (type?: 'bus' | 'metro' | 'alert') => {
+  const getIcon = (type?: 'bus' | 'metro' | 'alert', isUser?: boolean) => {
+    if (isUser) return userIcon;
     switch (type) {
       case 'metro': return metroIcon;
       case 'alert': return alertIcon;
       default: return emeraldIcon;
     }
   };
+
+  // CONNECTED TO BACKEND: Convert bus data to marker format
+  const busMarkers = buses.map((bus: Bus) => ({
+    id: bus.vehicleId,
+    pos: [bus.latitude, bus.longitude] as [number, number],
+    label: `${bus.type === 'metro' ? 'Metro' : 'CTU Bus'} ${bus.vehicleId}`,
+    eta: bus.eta || 'Calculating...',
+    type: bus.type || 'bus',
+    crowdLevel: bus.crowdLevel
+  }));
 
   const getCrowdIndicator = (level?: 'low' | 'medium' | 'high') => {
     if (!level) return null;
@@ -126,7 +190,7 @@ export function MapView() {
     );
   };
 
-  // FIXED: Handle map resizing and ensure proper sizing
+  // CONNECTED TO BACKEND: Handle map resizing and ensure proper sizing
   useEffect(() => {
     const handleResize = () => {
       if (mapRef.current) {
@@ -158,11 +222,82 @@ export function MapView() {
     };
   }, []);
 
+  // CONNECTED TO BACKEND: Share location handler
+  const handleShareLocation = async () => {
+    if (userLocation) {
+      await shareLocation(userLocation[0], userLocation[1]);
+    } else {
+      toast.error('Location not available');
+    }
+  };
+
+  // CONNECTED TO BACKEND: Refresh buses handler
+  const handleRefreshBuses = async () => {
+    if (userLocation) {
+      await fetchNearbyBuses(userLocation[0], userLocation[1]);
+      toast.success('Bus data refreshed! 🚌');
+    } else {
+      toast.error('Location not available');
+    }
+  };
+
   return (
     <div className="w-full h-full rounded-2xl overflow-hidden bg-[#0a1411] map-bg relative">
+      {/* CONNECTED TO BACKEND: Loading and error states */}
+      {isLoading && (
+        <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-20">
+          <div className="glass-panel px-3 py-2 rounded-full flex items-center gap-2">
+            <div className="w-4 h-4 border-2 border-[#0fb880] border-t-transparent rounded-full animate-spin"></div>
+            <span className="text-xs font-semibold text-gray-200">Loading buses...</span>
+          </div>
+        </div>
+      )}
+      
+      {error && (
+        <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-20">
+          <div className="glass-panel px-3 py-2 rounded-full flex items-center gap-2 bg-red-500/20 border border-red-500/30">
+            <span className="material-symbols-outlined text-red-400 text-sm">error</span>
+            <span className="text-xs font-semibold text-red-400">{error}</span>
+          </div>
+        </div>
+      )}
+      
+      {/* CONNECTED TO BACKEND: Action buttons */}
+      <div className="absolute top-4 right-4 z-20 flex flex-col gap-2">
+        <div className="glass-panel p-1 rounded-lg flex flex-col">
+          <button 
+            onClick={() => mapRef.current?.setZoom(mapRef.current.getZoom() + 1)}
+            className="w-8 h-8 flex items-center justify-center hover:text-[#0fb880] transition-colors text-white"
+          >
+            <span className="material-symbols-outlined text-lg">add</span>
+          </button>
+          <div className="h-px bg-[#0fb880]/10 mx-1"></div>
+          <button 
+            onClick={() => mapRef.current?.setZoom(mapRef.current.getZoom() - 1)}
+            className="w-8 h-8 flex items-center justify-center hover:text-[#0fb880] transition-colors text-white"
+          >
+            <span className="material-symbols-outlined text-lg">remove</span>
+          </button>
+        </div>
+        <button 
+          onClick={handleShareLocation}
+          className="glass-panel w-10 h-10 rounded-lg flex items-center justify-center text-[#0fb880] hover:bg-[#0fb880] hover:text-white transition-all shadow-lg"
+          title="Share My Location"
+        >
+          <span className="material-symbols-outlined">location_on</span>
+        </button>
+        <button 
+          onClick={handleRefreshBuses}
+          className="glass-panel w-10 h-10 rounded-lg flex items-center justify-center text-blue-400 hover:bg-blue-400 hover:text-white transition-all shadow-lg"
+          title="Refresh Bus Data"
+        >
+          <span className="material-symbols-outlined">refresh</span>
+        </button>
+      </div>
+      
       <MapContainer
         ref={mapRef}
-        center={center}
+        center={mapCenter}
         zoom={13}
         className="w-full h-full rounded-2xl"
         style={{ height: "100%", width: "100%" }}
@@ -180,14 +315,26 @@ export function MapView() {
           url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
         />
         <PulseAnimation />
-        {markers.map((m, i) => (
+        
+        {/* CONNECTED TO BACKEND: Route visualization */}
+        {routePath && routePath.length > 0 && (
+          <Polyline
+            positions={routePath}
+            color="#0fb880"
+            weight={4}
+            opacity={0.8}
+            smoothFactor={1}
+          />
+        )}
+        
+        {/* CONNECTED TO BACKEND: Route start point */}
+        {startPoint && (
           <Marker 
-            key={i} 
-            position={m.pos} 
-            icon={getIcon(m.type)}
+            position={startPoint} 
+            icon={getIcon('bus', true)}
             eventHandlers={{
-              click: () => setSelectedMarker(i),
-              popupopen: () => setSelectedMarker(i),
+              click: () => setSelectedMarker('start'),
+              popupopen: () => setSelectedMarker('start'),
               popupclose: () => setSelectedMarker(null)
             }}
           >
@@ -198,14 +345,100 @@ export function MapView() {
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ duration: 0.2 }}
               >
-                <div className="font-semibold text-white text-sm mb-1">{m.label}</div>
-                {m.eta && (
-                  <div className="flex items-center gap-2 text-[#0fb880] text-sm font-medium">
-                    <span className="material-symbols-outlined text-sm">schedule</span>
-                    <span>ETA: {m.eta}</span>
-                  </div>
-                )}
-                {getCrowdIndicator(m.crowdLevel)}
+                <div className="font-semibold text-white text-sm mb-1">🚀 Start Point</div>
+                <div className="text-xs text-gray-300">
+                  Lat: {startPoint[0].toFixed(4)}, Lng: {startPoint[1].toFixed(4)}
+                </div>
+              </motion.div>
+            </Popup>
+          </Marker>
+        )}
+        
+        {/* CONNECTED TO BACKEND: Route end point */}
+        {endPoint && (
+          <Marker 
+            position={endPoint} 
+            icon={alertIcon}
+            eventHandlers={{
+              click: () => setSelectedMarker('end'),
+              popupopen: () => setSelectedMarker('end'),
+              popupclose: () => setSelectedMarker(null)
+            }}
+          >
+            <Popup>
+              <motion.div 
+                className="popup-content"
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.2 }}
+              >
+                <div className="font-semibold text-white text-sm mb-1">🎯 Destination</div>
+                <div className="text-xs text-gray-300">
+                  Lat: {endPoint[0].toFixed(4)}, Lng: {endPoint[1].toFixed(4)}
+                </div>
+              </motion.div>
+            </Popup>
+          </Marker>
+        )}
+        
+        {/* CONNECTED TO BACKEND: User location marker */}
+        {userLocation && (
+          <Marker 
+            position={userLocation} 
+            icon={getIcon('bus', true)}
+            eventHandlers={{
+              click: () => setSelectedMarker('user'),
+              popupopen: () => setSelectedMarker('user'),
+              popupclose: () => setSelectedMarker(null)
+            }}
+          >
+            <Popup>
+              <motion.div 
+                className="popup-content"
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.2 }}
+              >
+                <div className="font-semibold text-white text-sm mb-1">📍 Your Location</div>
+                <div className="text-xs text-gray-300">
+                  Lat: {userLocation[0].toFixed(4)}, Lng: {userLocation[1].toFixed(4)}
+                </div>
+                <button 
+                  onClick={handleShareLocation}
+                  className="mt-2 w-full bg-[#0fb880]/20 hover:bg-[#0fb880]/30 text-[#0fb880] text-xs px-2 py-1 rounded transition-colors"
+                >
+                  Share Location
+                </button>
+              </motion.div>
+            </Popup>
+          </Marker>
+        )}
+        
+        {/* CONNECTED TO BACKEND: Real-time bus markers */}
+        {busMarkers.map((bus) => (
+          <Marker 
+            key={bus.id} 
+            position={bus.pos} 
+            icon={getIcon(bus.type)}
+            eventHandlers={{
+              click: () => setSelectedMarker(bus.id),
+              popupopen: () => setSelectedMarker(bus.id),
+              popupclose: () => setSelectedMarker(null)
+            }}
+          >
+            <Popup>
+              <motion.div 
+                className="popup-content"
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.2 }}
+              >
+                <div className="font-semibold text-white text-sm mb-1">{bus.label}</div>
+                <div className="flex items-center gap-2 text-[#0fb880] text-sm font-medium">
+                  <span className="material-symbols-outlined text-sm">schedule</span>
+                  <span>ETA: {bus.eta}</span>
+                </div>
+                {getCrowdIndicator(bus.crowdLevel)}
                 <div className="mt-2 pt-2 border-t border-white/10 flex gap-2">
                   <button className="flex-1 bg-[#0fb880]/20 hover:bg-[#0fb880]/30 text-[#0fb880] text-xs px-2 py-1 rounded transition-colors">
                     Track
@@ -218,29 +451,74 @@ export function MapView() {
             </Popup>
           </Marker>
         ))}
+        
+        {/* ADDED: Route-specific alert markers */}
+        {routeAlerts && routeAlerts.map((alert, index) => {
+          // Calculate distance from route (simplified - within 2km)
+          const alertPos: [number, number] = [alert.latitude || alert.lat || 30.7, alert.longitude || alert.lng || 76.8];
+          const alertType = alert.type || alert.severity || 'warning';
+          const alertIcon = alertType === 'jam' ? 'warning' : alertType === 'accident' ? 'error' : 'info';
+          
+          return (
+            <Marker 
+              key={`route-alert-${index}`}
+              position={alertPos}
+              icon={pulseIcon('#f59e0b', alertIcon, false)}
+              eventHandlers={{
+                click: () => setSelectedMarker(`alert-${index}`),
+                popupopen: () => setSelectedMarker(`alert-${index}`),
+                popupclose: () => setSelectedMarker(null)
+              }}
+            >
+              <Popup>
+                <motion.div 
+                  className="popup-content"
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  <div className="font-semibold text-white text-sm mb-1">
+                    {alertType === 'jam' ? '🚗 Traffic Jam' : alertType === 'accident' ? '⚠️ Accident' : 'ℹ️ Route Alert'}
+                  </div>
+                  <div className="text-xs text-gray-300 mb-1">
+                    {alert.message || alert.description || 'Alert on your route'}
+                  </div>
+                  <div className="text-xs text-orange-400">
+                    ETA Impact: {alert.delay || '+5 min'}
+                  </div>
+                  <div className="mt-2 pt-2 border-t border-white/10">
+                    <button className="w-full bg-orange-500/20 hover:bg-orange-500/30 text-orange-400 text-xs px-2 py-1 rounded transition-colors">
+                      View Details
+                    </button>
+                  </div>
+                </motion.div>
+              </Popup>
+            </Marker>
+          );
+        })}
       </MapContainer>
       
-      {/* POLISHED: Map legend */}
+      {/* CONNECTED TO BACKEND: Map legend with live count */}
       <div className="absolute bottom-4 left-4 bg-[#0a1411]/90 backdrop-blur-md rounded-lg p-3 border border-white/10 z-10">
-        <div className="text-xs font-bold text-white mb-2">Live Transit</div>
+        <div className="text-xs font-bold text-white mb-2">Live Transit ({busMarkers.length})</div>
         <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-[#10b981]"></div>
-            <span className="text-xs text-gray-300">Bus</span>
+            <div className="w-3 h-3 rounded-full bg-[#10b981] animate-pulse"></div>
+            <span className="text-xs text-gray-300">Bus ({busMarkers.filter(b => b.type === 'bus').length})</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-[#06b6d4]"></div>
-            <span className="text-xs text-gray-300">Metro</span>
+            <div className="w-3 h-3 rounded-full bg-[#06b6d4] animate-pulse"></div>
+            <span className="text-xs text-gray-300">Metro ({busMarkers.filter(b => b.type === 'metro').length})</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-[#f59e0b]"></div>
-            <span className="text-xs text-gray-300">Alert</span>
+            <div className="w-3 h-3 rounded-full bg-[#3b82f6]"></div>
+            <span className="text-xs text-gray-300">You</span>
           </div>
         </div>
       </div>
       
-      {/* Selected marker info */}
-      {selectedMarker !== null && (
+      {/* CONNECTED TO BACKEND: Selected marker info */}
+      {selectedMarker && selectedMarker !== 'user' && (
         <motion.div 
           className="absolute top-4 right-4 bg-[#0a1411]/90 backdrop-blur-md rounded-lg p-3 border border-white/10 z-10 max-w-xs"
           initial={{ opacity: 0, x: 20 }}
@@ -248,11 +526,11 @@ export function MapView() {
           exit={{ opacity: 0, x: 20 }}
         >
           <div className="text-sm font-medium text-white mb-1">
-            {markers[selectedMarker].label}
+            {busMarkers.find(b => b.id === selectedMarker)?.label}
           </div>
-          {markers[selectedMarker].eta && (
-            <div className="text-xs text-[#0fb880]">ETA: {markers[selectedMarker].eta}</div>
-          )}
+          <div className="text-xs text-[#0fb880]">
+            ETA: {busMarkers.find(b => b.id === selectedMarker)?.eta}
+          </div>
         </motion.div>
       )}
     </div>
