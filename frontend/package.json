@@ -10,6 +10,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@googlemaps/js-api-loader": "^2.0.2",
+    "@googlemaps/react-wrapper": "^1.2.0",
     "axios": "^1.6.2",
     "framer-motion": "^10.16.16",
     "leaflet": "^1.9.4",

@@ -6,13 +6,6 @@ import toast from 'react-hot-toast';
 import { useLocationService } from '../hooks/useLocationService';
 import axios from 'axios';
 
-// ADDED: Geocoding interface for Nominatim response
-interface GeocodingResult {
-  lat: number;
-  lon: number;
-  display_name: string;
-}
-
 const punjabReports = [
   { 
     name: 'Amanjeet S.', 
@@ -297,7 +290,7 @@ export function Dashboard() {
         } else {
           throw new Error('No OSRM route found');
         }
-      } catch (osrmError) {
+        } catch (osrmError) {
         console.log('⚠️ OSRM routing failed, trying backend fallback:', osrmError);
         try {
           // Try backend route suggestion as fallback
@@ -635,7 +628,7 @@ export function Dashboard() {
             <div className="w-48 h-48 relative flex items-center justify-center flex-shrink-0">
               <svg className="w-full h-full transform -rotate-90">
                 <circle className="text-white/5" cx="96" cy="96" fill="transparent" r="88" stroke="currentColor" strokeWidth="12"></circle>
-                <circle 
+                <motion.circle 
                   className="text-[#0fb880]" 
                   cx="96" 
                   cy="96" 
@@ -648,7 +641,7 @@ export function Dashboard() {
                   transition={{ delay: 0.7, duration: 1.5, ease: 'easeOut' }}
                   strokeLinecap="round" 
                   strokeWidth="12"
-                ></circle>
+                ></motion.circle>
               </svg>
               <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
                 <span className="text-xs font-bold text-gray-400 uppercase leading-none mb-1">Weekly</span>

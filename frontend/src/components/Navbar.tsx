@@ -1,7 +1,6 @@
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { motion, AnimatePresence } from 'framer-motion';
-import { useState } from 'react';
+import { motion } from 'framer-motion';
 
 const navItems = [
   { path: '/dashboard', label: 'Dashboard', icon: 'dashboard' },
@@ -11,7 +10,6 @@ const navItems = [
 
 export function Navbar() {
   const { user, isAuthenticated } = useAuth();
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // POLISHED: Enhanced hover states and transitions
 
@@ -129,7 +127,7 @@ export function Navbar() {
         transition={{ duration: 0.5, ease: 'easeOut' }}
       >
         <div className="flex items-center justify-around h-16">
-          {navItems.map((item, index) => (
+          {navItems.map((item) => (
             <motion.div key={item.path} whileHover={{ y: -3 }} whileTap={{ y: 0 }}>
               <NavLink
                 key={item.path}

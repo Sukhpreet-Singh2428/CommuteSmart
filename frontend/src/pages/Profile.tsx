@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 
 const achievements = [
@@ -473,7 +473,7 @@ export function Profile() {
                           <p className="text-sm font-medium text-white">{item.label}</p>
                           <p className="text-xs text-gray-400">{item.description}</p>
                         </div>
-                        <button
+                        <motion.button
                           onClick={() => handleSettingToggle(item.label)}
                           className={`w-12 h-6 rounded-full transition-colors relative ${
                             settings[item.label] ? 'bg-[#0fb880]' : 'bg-gray-600'
@@ -487,7 +487,7 @@ export function Profile() {
                             }`}
                             layout
                           ></motion.div>
-                        </button>
+                        </motion.button>
                       </div>
                     ))}
                   </div>
