@@ -33,7 +33,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Since we're using httpOnly cookies, we need to verify with the backend
     const checkAuth = async () => {
       try {
-        const response = await axios.get('http://localhost:5000/api/auth/me', {
+        const response = await axios.get(`${import.meta.env.VITE_API_URL}/api/auth/me`, {
           withCredentials: true
         });
         setUser(response.data.user);
@@ -50,7 +50,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = useCallback(async (email: string, password: string) => {
     try {
       // CONNECTED TO BACKEND: Call real login API with axios and withCredentials
-      const response = await axios.post('http://localhost:5000/api/auth/login', {
+      const response = await axios.post(`${import.meta.env.VITE_API_URL}/api/auth/login`, {
         email,
         password
       }, {
@@ -70,7 +70,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const register = useCallback(async (name: string, email: string, password: string) => {
     try {
       // CONNECTED TO BACKEND: Call real signup API with axios and withCredentials
-      const response = await axios.post('http://localhost:5000/api/auth/signup', {
+      const response = await axios.post(`${import.meta.env.VITE_API_URL}/api/auth/signup`, {
         name,
         email,
         password
@@ -91,7 +91,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = useCallback(async () => {
     try {
       // CONNECTED TO BACKEND: Call logout API to clear server-side session
-      await axios.post('http://localhost:5000/api/auth/logout', {}, {
+      await axios.post(`${import.meta.env.VITE_API_URL}/api/auth/logout`, {}, {
         withCredentials: true
       });
     } catch (error) {
