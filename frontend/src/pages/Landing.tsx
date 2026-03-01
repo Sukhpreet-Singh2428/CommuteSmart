@@ -492,78 +492,143 @@ export function Landing() {
             Download CommuteSmart today and join the movement towards a cleaner, faster, and smarter commute in Chandigarh, Rajpura, Patiala & Ambala.
           </p>
           <div className="flex flex-col sm:flex-row justify-center gap-4">
-            <motion.button
-              onClick={handleGetStarted}
+            <a 
+              href="https://apps.apple.com" 
+              target="_blank" 
+              rel="noopener noreferrer"
               className="bg-white text-background-dark hover:bg-gray-100 px-8 py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-3 transition-colors shadow-lg mx-auto"
             >
-              <span className="material-icons text-2xl">
-                {user ? 'dashboard' : 'apple'}
-              </span>
+              <span className="material-icons text-2xl">apple</span>
               <div className="text-left leading-tight">
-                <span className="block text-xs font-normal">
-                  {user ? 'Go to' : 'Download on the'}
-                </span>
-                <span>{user ? 'Dashboard' : 'App Store'}</span>
+                <span className="block text-xs font-normal">Download on the</span>
+                <span>App Store</span>
               </div>
-            </motion.button>
-            <button type="button" className="glass-card border border-white/20 hover:bg-white/10 text-white px-8 py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-3 transition-colors shadow-lg mx-auto">
+            </a>
+            <a 
+              href="https://play.google.com" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="glass-card border border-white/20 hover:bg-white/10 text-white px-8 py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-3 transition-colors shadow-lg mx-auto"
+            >
               <span className="material-icons text-2xl">android</span>
               <div className="text-left leading-tight">
                 <span className="block text-xs font-normal">Get it on</span>
                 <span>Google Play</span>
               </div>
-            </button>
+            </a>
           </div>
         </div>
       </section>
 
       {/* Footer */}
-      <footer className="bg-background-dark border-t border-white/10 py-12">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <footer className="bg-gradient-to-br from-background-dark via-background-dark to-primary/5 border-t border-white/10 py-16 relative overflow-hidden">
+        <div className="absolute inset-0 opacity-20" style={{
+          backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%230fb880' fill-opacity='0.03'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`
+        }}></div>
+        
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
           <div className="grid md:grid-cols-4 gap-8 mb-12">
             <div className="col-span-1 md:col-span-1">
-              <div className="flex items-center gap-2 mb-4">
-                <div className="w-6 h-6 rounded bg-primary flex items-center justify-center">
-                  <span className="material-icons text-white text-xs">directions_bus</span>
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center shadow-lg shadow-primary/20">
+                  <span className="material-icons text-white text-sm">directions_bus</span>
                 </div>
-                <span className="font-bold text-white">CommuteSmart</span>
+                <span className="font-bold text-xl text-white">CommuteSmart</span>
               </div>
-              <p className="text-gray-500 text-sm">
-                Building the future of sustainable urban mobility.
+              <p className="text-gray-400 text-sm leading-relaxed mb-6">
+                Building the future of sustainable urban mobility. Join thousands of commuters making smarter choices across Punjab.
               </p>
+              <div className="flex gap-3">
+                <a className="w-10 h-10 rounded-lg bg-white/5 hover:bg-white/10 flex items-center justify-center text-white transition-all hover:scale-110" href="#" aria-label="Twitter">
+                  <span className="material-icons text-lg">flutter_dash</span>
+                </a>
+                <a className="w-10 h-10 rounded-lg bg-white/5 hover:bg-white/10 flex items-center justify-center text-white transition-all hover:scale-110" href="#" aria-label="Facebook">
+                  <span className="material-icons text-lg">facebook</span>
+                </a>
+                <a className="w-10 h-10 rounded-lg bg-white/5 hover:bg-white/10 flex items-center justify-center text-white transition-all hover:scale-110" href="#" aria-label="Instagram">
+                  <span className="material-icons text-lg">photo_camera</span>
+                </a>
+                <a className="w-10 h-10 rounded-lg bg-white/5 hover:bg-white/10 flex items-center justify-center text-white transition-all hover:scale-110" href="#" aria-label="LinkedIn">
+                  <span className="material-icons text-lg">work</span>
+                </a>
+              </div>
             </div>
-            <div>
-              <h4 className="text-white font-bold mb-4">Product</h4>
-              <ul className="space-y-2 text-sm text-gray-500">
-                <li><a className="hover:text-primary transition-colors" href="#features">Features</a></li>
-                <li><a className="hover:text-primary transition-colors" href="#cities">Cities</a></li>
-                <li><a className="hover:text-primary transition-colors" href="#">Pricing</a></li>
-                <li><a className="hover:text-primary transition-colors" href="#">API</a></li>
+            
+            <div className="space-y-6">
+              <h4 className="text-white font-bold text-lg mb-6 flex items-center gap-2">
+                <span className="material-icons text-primary">rocket_launch</span>
+                Product
+              </h4>
+              <ul className="space-y-3 text-sm">
+                <li><a className="text-gray-400 hover:text-primary transition-colors flex items-center gap-2" href="#features">
+                  <span className="material-icons text-xs">chevron_right</span> Features
+                </a></li>
+                <li><a className="text-gray-400 hover:text-primary transition-colors flex items-center gap-2" href="#cities">
+                  <span className="material-icons text-xs">chevron_right</span> Cities
+                </a></li>
+                <li><a className="text-gray-400 hover:text-primary transition-colors flex items-center gap-2" href="#">
+                  <span className="material-icons text-xs">chevron_right</span> Pricing
+                </a></li>
+                <li><a className="text-gray-400 hover:text-primary transition-colors flex items-center gap-2" href="#">
+                  <span className="material-icons text-xs">chevron_right</span> API
+                </a></li>
               </ul>
             </div>
-            <div>
-              <h4 className="text-white font-bold mb-4">Company</h4>
-              <ul className="space-y-2 text-sm text-gray-500">
-                <li><a className="hover:text-primary transition-colors" href="#">About Us</a></li>
-                <li><a className="hover:text-primary transition-colors" href="#">Careers</a></li>
-                <li><a className="hover:text-primary transition-colors" href="#">Blog</a></li>
-                <li><a className="hover:text-primary transition-colors" href="#">Contact</a></li>
+            
+            <div className="space-y-6">
+              <h4 className="text-white font-bold text-lg mb-6 flex items-center gap-2">
+                <span className="material-icons text-primary">business</span>
+                Company
+              </h4>
+              <ul className="space-y-3 text-sm">
+                <li><a className="text-gray-400 hover:text-primary transition-colors flex items-center gap-2" href="#">
+                  <span className="material-icons text-xs">chevron_right</span> About Us
+                </a></li>
+                <li><a className="text-gray-400 hover:text-primary transition-colors flex items-center gap-2" href="#">
+                  <span className="material-icons text-xs">chevron_right</span> Careers
+                </a></li>
+                <li><a className="text-gray-400 hover:text-primary transition-colors flex items-center gap-2" href="#">
+                  <span className="material-icons text-xs">chevron_right</span> Blog
+                </a></li>
+                <li><a className="text-gray-400 hover:text-primary transition-colors flex items-center gap-2" href="#">
+                  <span className="material-icons text-xs">chevron_right</span> Contact
+                </a></li>
               </ul>
             </div>
-            <div>
-              <h4 className="text-white font-bold mb-4">Legal</h4>
-              <ul className="space-y-2 text-sm text-gray-500">
-                <li><a className="hover:text-primary transition-colors" href="#">Privacy Policy</a></li>
-                <li><a className="hover:text-primary transition-colors" href="#">Terms of Service</a></li>
+            
+            <div className="space-y-6">
+              <h4 className="text-white font-bold text-lg mb-6 flex items-center gap-2">
+                <span className="material-icons text-primary">gavel</span>
+                Legal
+              </h4>
+              <ul className="space-y-3 text-sm">
+                <li><a className="text-gray-400 hover:text-primary transition-colors flex items-center gap-2" href="#">
+                  <span className="material-icons text-xs">chevron_right</span> Privacy Policy
+                </a></li>
+                <li><a className="text-gray-400 hover:text-primary transition-colors flex items-center gap-2" href="#">
+                  <span className="material-icons text-xs">chevron_right</span> Terms of Service
+                </a></li>
+                <li><a className="text-gray-400 hover:text-primary transition-colors flex items-center gap-2" href="#">
+                  <span className="material-icons text-xs">chevron_right</span> Cookie Policy
+                </a></li>
               </ul>
             </div>
           </div>
-          <div className="border-t border-white/10 pt-8 flex flex-col md:flex-row justify-between items-center gap-4">
-            <p className="text-gray-600 text-sm">© 2023 CommuteSmart. All rights reserved.</p>
-            <div className="flex gap-4">
-              <a className="text-gray-500 hover:text-white transition-colors" href="#" aria-label="Twitter"><span className="material-icons text-lg">flutter_dash</span></a>
-              <a className="text-gray-500 hover:text-white transition-colors" href="#" aria-label="Facebook"><span className="material-icons text-lg">facebook</span></a>
-              <a className="text-gray-500 hover:text-white transition-colors" href="#" aria-label="Instagram"><span className="material-icons text-lg">photo_camera</span></a>
+          
+          <div className="border-t border-white/10 pt-8 flex flex-col md:flex-row justify-between items-center gap-6">
+            <p className="text-gray-500 text-sm flex items-center gap-2">
+              <span className="material-icons text-xs">copyright</span>
+              © 2026 CommuteSmart. All rights reserved.
+            </p>
+            <div className="flex items-center gap-6 text-sm text-gray-500">
+              <span className="flex items-center gap-1">
+                <span className="material-icons text-xs">location_on</span>
+                Chandigarh, Punjab
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="material-icons text-xs">email</span>
+                hello@commutesmart.com
+              </span>
             </div>
           </div>
         </div>
