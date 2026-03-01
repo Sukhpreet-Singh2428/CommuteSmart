@@ -6,8 +6,9 @@
   "scripts": {
     "dev": "vite",
     "start": "vite",
-    "build": "tsc && vite build",
-    "preview": "vite preview"
+    "build": "vite build --mode production",
+    "preview": "vite preview",
+    "build:verbose": "vite build --mode production --debug"
   },
   "dependencies": {
     "@googlemaps/js-api-loader": "^2.0.2",
