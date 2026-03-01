@@ -5,7 +5,6 @@ import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 
 export function Register() {
-  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [terms, setTerms] = useState(false);
@@ -22,7 +21,7 @@ export function Register() {
     }
     setLoading(true);
     try {
-      await register(name, email, password);
+      await register(email, password);
       setShowConfetti(true);
       toast.success('Green account created! Welcome to CommuteSmart.');
       setTimeout(() => setShowConfetti(false), 2500);
@@ -57,19 +56,7 @@ export function Register() {
             <p className="text-gray-400">Create your account to start commuting sustainably across Punjab.</p>
           </div>
           
-          <form onSubmit={handleSubmit} className="space-y-2">
-            <div>
-              <label className="block text-sm font-medium text-gray-400 mb-2">Full Name</label>
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                required
-                className="w-full bg-surface-dark/50 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
-                placeholder="Enter your full name"
-              />
-            </div>
-            
+          <form onSubmit={handleSubmit} className="space-y-5">
             <div>
               <label className="block text-sm font-medium text-gray-400 mb-2">Email Address</label>
               <input
@@ -77,7 +64,7 @@ export function Register() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="w-full bg-surface-dark/50 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
+                className="w-full bg-surface-dark/50 border border-white/10 rounded-xl px-4 py-3.5 text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
                 placeholder="name@email.com"
               />
             </div>
@@ -90,39 +77,39 @@ export function Register() {
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 minLength={6}
-                className="w-full bg-surface-dark/50 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
+                className="w-full bg-surface-dark/50 border border-white/10 rounded-xl px-4 py-3.5 text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
                 placeholder="••••••••"
               />
             </div>
             
-            <div className="flex items-start py-1">
-              <div className="flex items-center h-5">
-                <input
-                  type="checkbox"
-                  id="terms"
-                  name="terms"
-                  checked={terms}
-                  onChange={(e) => setTerms(e.target.checked)}
-                  required
-                  className="h-4 w-4 rounded border-white/10 bg-background-dark text-primary focus:ring-primary"
-                />
-              </div>
-              <label className="ml-2 block text-xs text-gray-500" htmlFor="terms">
+            <div className="flex items-center py-1">
+              <input
+                type="checkbox"
+                id="terms"
+                name="terms"
+                checked={terms}
+                onChange={(e) => setTerms(e.target.checked)}
+                required
+                className="h-4 w-4 rounded border-white/10 bg-background-dark text-primary focus:ring-primary"
+              />
+              <label className="ml-2 block text-sm text-gray-400" htmlFor="terms">
                 I agree to the <Link to="/terms" className="text-primary hover:underline">Terms of Service</Link> and <Link to="/privacy" className="text-primary hover:underline">Privacy Policy</Link>.
               </label>
             </div>
             
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-4 bg-gradient-to-r from-primary to-primary-dark text-white font-bold rounded-xl btn-glow transition-all flex items-center justify-center gap-2 group shadow-lg shadow-primary/20"
-            >
-              <span>{loading ? 'Creating...' : 'Create Green Account'}</span>
-              <span className="material-symbols-outlined text-lg group-hover:translate-x-1 transition-transform">energy_savings_leaf</span>
-            </button>
+            <div className="pt-2">
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-4 bg-gradient-to-r from-primary to-primary-dark text-white font-bold rounded-xl btn-glow transition-all flex items-center justify-center gap-2 group shadow-lg shadow-primary/20"
+              >
+                <span>{loading ? 'Creating...' : 'Create Green Account'}</span>
+                <span className="material-symbols-outlined text-lg group-hover:translate-x-1 transition-transform">energy_savings_leaf</span>
+              </button>
+            </div>
           </form>
           
-          <div className="relative my-4">
+          <div className="relative my-6">
             <div className="absolute inset-0 flex items-center">
               <div className="w-full border-t border-white/5"></div>
             </div>
@@ -131,7 +118,7 @@ export function Register() {
             </div>
           </div>
           
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-4 mb-2">
             <button className="flex items-center justify-center gap-3 px-4 py-3 rounded-xl border border-white/5 bg-white/5 hover:bg-white/10 transition-colors">
               <img alt="Google" className="w-5 h-5" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDnkwxTICOpYJ_7PcJ_VspbSbBjNd52AFRLZiEgJUoyVc5vaBdQCoC67PN46ye8DBHuDDl55WWdUwdAwMVn3ERHNsRI1Z85f56s1PmNtYewlRe6ArGMg_oVgA-zGMUPHks8c3M-mHsOpFhNPwUJu4Q7mmtxkBTAAHv2QbLMgKuopJPBQwgaZHqqOy0aQEzxdZs3gxucaTqJFpgkWFSpMAM7G02H7v-S4Xr_6aVvAh9nxz89LnmrzniLXEgon_aynvFJTJ5HKogtnGU"/>
               <span className="text-sm font-medium text-gray-300">Google</span>

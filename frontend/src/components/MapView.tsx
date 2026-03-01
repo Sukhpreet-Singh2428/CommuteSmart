@@ -54,8 +54,8 @@ const pulseIcon = (color: string, type?: 'bus' | 'metro' | 'alert' | 'warning' |
   });
 };
 
-// CONNECTED TO BACKEND: Default center (Ludhiana) - will be updated with user location
-const defaultCenter: [number, number] = [30.91, 75.86];
+// CONNECTED TO BACKEND: Default center (Chandigarh - more central for Punjab region)
+const defaultCenter: [number, number] = [30.73, 76.78];
 
 function PulseAnimation() {
   useEffect(() => {
@@ -117,27 +117,60 @@ export function MapView({ routePath, startPoint, endPoint, routeAlerts }: {
     isLoading, 
     error, 
     fetchNearbyBuses, 
-    shareLocation 
+    shareLocation,
+    getCurrentLocation
   } = useLocationService();
   
   const [selectedMarker, setSelectedMarker] = useState<string | null>(null);
-  const [mapCenter, setMapCenter] = useState<[number, number]>(defaultCenter);
+  const [mapCenter, setMapCenter] = useState<[number, number]>(userLocation || defaultCenter);
   const mapRef = useRef<any>(null);
   
-  // CONNECTED TO BACKEND: Update map center when user location changes
+  // CONNECTED TO BACKEND: Initialize map with user location if available
   useEffect(() => {
+    console.log('🗺️ MapView - userLocation changed:', userLocation);
     if (userLocation) {
+      console.log('🗺️ MapView - Setting map center to user location:', userLocation);
       setMapCenter(userLocation);
     }
   }, [userLocation]);
+  
+  // Request user location on mount if not already available
+  useEffect(() => {
+    console.log('🗺️ MapView - Checking user location on mount:', userLocation);
+    if (!userLocation) {
+      console.log('🗺️ MapView - Requesting user location...');
+      getCurrentLocation();
+    } else {
+      console.log('🗺️ MapView - User location already available:', userLocation);
+    }
+  }, [userLocation, getCurrentLocation]);
   
   // CONNECTED TO BACKEND: Adjust map bounds when route is available
   useEffect(() => {
     if (routePath && routePath.length > 0 && mapRef.current) {
       const bounds = L.latLngBounds(routePath);
-      mapRef.current.fitBounds(bounds, { padding: [50, 50] });
+      // Enhanced zoom with better padding and animation
+      mapRef.current.fitBounds(bounds, { 
+        padding: [80, 80], // Increased padding for better visibility
+        maxZoom: 16, // Prevent excessive zoom
+        animate: true, // Smooth animation
+        duration: 1.5 // Animation duration
+      });
     }
   }, [routePath]);
+
+  // Additional effect to center on route when start/end points change
+  useEffect(() => {
+    if (startPoint && endPoint && mapRef.current) {
+      const bounds = L.latLngBounds([startPoint, endPoint]);
+      mapRef.current.fitBounds(bounds, { 
+        padding: [100, 100],
+        maxZoom: 15,
+        animate: true,
+        duration: 1.5
+      });
+    }
+  }, [startPoint, endPoint]);
   
   // CONNECTED TO BACKEND: Refresh buses data periodically
   useEffect(() => {

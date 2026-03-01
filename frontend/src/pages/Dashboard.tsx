@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { MapView } from '../components/MapView';
+import { UserMenu } from '../components/UserMenu';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { useLocationService } from '../hooks/useLocationService';
@@ -113,8 +114,59 @@ export function Dashboard() {
     // ROBUST GEOCODING: Fallback dictionary for common Punjab places
     const punjabFallbacks: { [key: string]: [number, number] } = {
       'rajpura': [30.48, 76.59],
+      // Chandigarh sectors
+      'sector 1 chandigarh': [30.71, 76.79],
+      'sector 2 chandigarh': [30.72, 76.79],
+      'sector 3 chandigarh': [30.72, 76.78],
+      'sector 4 chandigarh': [30.73, 76.78],
+      'sector 5 chandigarh': [30.73, 76.77],
+      'sector 6 chandigarh': [30.73, 76.79],
+      'sector 7 chandigarh': [30.74, 76.78],
+      'sector 8 chandigarh': [30.74, 76.77],
+      'sector 9 chandigarh': [30.74, 76.79],
+      'sector 10 chandigarh': [30.74, 76.80],
+      'sector 11 chandigarh': [30.75, 76.78],
+      'sector 12 chandigarh': [30.75, 76.79],
+      'sector 13 chandigarh': [30.75, 76.77],
+      'sector 14 chandigarh': [30.75, 76.80],
+      'sector 15 chandigarh': [30.75, 76.78],
+      'sector 16 chandigarh': [30.75, 76.79],
       'sector 17 chandigarh': [30.74, 76.78],
+      'sector 18 chandigarh': [30.73, 76.77],
+      'sector 19 chandigarh': [30.73, 76.79],
+      'sector 20 chandigarh': [30.73, 76.80],
+      'sector 21 chandigarh': [30.72, 76.78],
+      'sector 22 chandigarh': [30.72, 76.77],
+      'sector 23 chandigarh': [30.72, 76.79],
+      'sector 24 chandigarh': [30.72, 76.80],
+      'sector 25 chandigarh': [30.71, 76.78],
+      'sector 26 chandigarh': [30.71, 76.79],
+      'sector 27 chandigarh': [30.71, 76.77],
+      'sector 28 chandigarh': [30.71, 76.80],
+      'sector 29 chandigarh': [30.70, 76.78],
+      'sector 30 chandigarh': [30.70, 76.79],
+      'sector 31 chandigarh': [30.70, 76.77],
+      'sector 32 chandigarh': [30.70, 76.80],
+      'sector 33 chandigarh': [30.69, 76.78],
+      'sector 34 chandigarh': [30.69, 76.79],
+      'sector 35 chandigarh': [30.69, 76.77],
+      'sector 36 chandigarh': [30.69, 76.80],
+      'sector 37 chandigarh': [30.68, 76.78],
+      'sector 38 chandigarh': [30.68, 76.79],
+      'sector 39 chandigarh': [30.68, 76.77],
+      'sector 40 chandigarh': [30.68, 76.80],
+      'sector 41 chandigarh': [30.67, 76.78],
+      'sector 42 chandigarh': [30.67, 76.79],
+      'sector 43 chandigarh': [30.67, 76.77],
+      'sector 44 chandigarh': [30.67, 76.80],
+      'sector 45 chandigarh': [30.66, 76.78],
+      'sector 46 chandigarh': [30.66, 76.79],
+      'sector 47 chandigarh': [30.66, 76.77],
+      'sector 48 chandigarh': [30.66, 76.80],
+      'sector 49 chandigarh': [30.65, 76.78],
+      'sector 50 chandigarh': [30.65, 76.79],
       'sector 17': [30.74, 76.78],
+      'sector 15': [30.75, 76.78],
       'chandigarh': [30.73, 76.78],
       'ludhiana': [30.91, 75.85],
       'patiala': [30.34, 76.39],
@@ -144,11 +196,54 @@ export function Dashboard() {
       'muktsar': [30.47, 74.52],
     };
     
-    // Check fallback dictionary first
+    // Check fallback dictionary first with multiple patterns
     if (punjabFallbacks[cleanName]) {
       const coords = punjabFallbacks[cleanName];
       console.log(`Using fallback coordinates for "${placeName}": [${coords[0]}, ${coords[1]}]`);
       return coords;
+    }
+    
+    // Try sector-specific patterns for Chandigarh
+    const sectorMatch = cleanName.match(/sector\s*(\d+)/);
+    if (sectorMatch && (cleanName.includes('chandigarh') || cleanName.includes('sector'))) {
+      const sectorNum = sectorMatch[1];
+      const sectorKey = `sector ${sectorNum} chandigarh`;
+      const sectorKeyShort = `sector ${sectorNum}`;
+      
+      if (punjabFallbacks[sectorKey]) {
+        const coords = punjabFallbacks[sectorKey];
+        console.log(`Using sector fallback for "${placeName}": [${coords[0]}, ${coords[1]}]`);
+        return coords;
+      }
+      
+      if (punjabFallbacks[sectorKeyShort]) {
+        const coords = punjabFallbacks[sectorKeyShort];
+        console.log(`Using short sector fallback for "${placeName}": [${coords[0]}, ${coords[1]}]`);
+        return coords;
+      }
+    }
+    
+    // Try city-specific patterns for other major cities
+    const cityPatterns = {
+      'ambala': [30.38, 76.78],
+      'patiala': [30.34, 76.39],
+      'rajpura': [30.48, 76.59],
+      'ludhiana': [30.91, 75.85],
+      'jalandhar': [31.33, 75.58],
+      'amritsar': [31.64, 74.87],
+      'bathinda': [30.21, 75.00],
+      'mohali': [30.71, 76.71],
+      'zirakpur': [30.65, 76.81],
+      'kharar': [30.75, 76.64],
+      'panchkula': [30.69, 76.86],
+    };
+    
+    // Check if the place name contains any of these cities
+    for (const [city, coords] of Object.entries(cityPatterns)) {
+      if (cleanName.includes(city)) {
+        console.log(`Using city fallback for "${placeName}": [${coords[0]}, ${coords[1]}]`);
+        return coords;
+      }
     }
     
     // Try Nominatim API with optimized query format
@@ -228,7 +323,8 @@ export function Dashboard() {
     if (userLocation) {
       await shareLocation(userLocation[0], userLocation[1]);
     } else {
-      toast.error('Location not available. Please enable location services.');
+      // Removed toast to reduce notification spam - user can see location status in UI
+      console.error('Location not available for sharing');
     }
   };
 
@@ -341,8 +437,10 @@ export function Dashboard() {
         // Don't fail the entire route calculation if alerts fail
       }
       
-      // Step 8: Show success message
-      toast.success('Optimal route calculated! 🚌');
+      // Step 8: Show success message only if user explicitly calculated a route
+      if (from && to) {
+        toast.success('Optimal route calculated! 🚌');
+      }
       console.log('🎉 Route calculation completed successfully');
       
     } catch (error: any) {
@@ -381,13 +479,43 @@ export function Dashboard() {
       }
     } catch (error: any) {
       console.error('Error fetching route alerts:', error);
-      // Fallback to empty alerts on error
+      // Fallback to empty alerts on error - no toast needed for background operation
       setRouteAlerts([]);
-      toast.error('Failed to load route alerts');
     } finally {
       setIsLoadingAlerts(false);
     }
   };
+
+  // CONNECTED TO BACKEND: Fetch general community feed when no route is active
+  const fetchGeneralFeed = async () => {
+    setIsLoadingAlerts(true);
+    try {
+      // Use default location (Chandigarh) for general feed
+      const response = await axios.get(
+        `${import.meta.env.VITE_API_URL}/api/location/nearby?lat=30.73&long=76.78`,
+        { withCredentials: true }
+      );
+      
+      if (response.data.success && response.data.alerts) {
+        setRouteAlerts(response.data.alerts);
+      } else {
+        setRouteAlerts([]);
+      }
+    } catch (error: any) {
+      console.error('Error fetching general feed:', error);
+      // Fallback to mock data on error
+      setRouteAlerts([]);
+    } finally {
+      setIsLoadingAlerts(false);
+    }
+  };
+
+  // Load general feed on mount
+  useEffect(() => {
+    if (!routeCenter) {
+      fetchGeneralFeed();
+    }
+  }, [routeCenter]);
 
   // CONNECTED TO BACKEND: Reset alerts when route is cleared
   const clearRoute = () => {
@@ -401,25 +529,19 @@ export function Dashboard() {
   return (
     <div className="min-h-screen w-full flex flex-col bg-[#0a1411]">
       {/* Navigation */}
-      <nav className="h-16 flex items-center justify-between px-6 border-b border-primary/20 bg-[#0a1411]/80 backdrop-blur-md z-50">
-        <div className="flex items-center gap-2">
+      <nav className="h-16 flex items-center justify-between px-8 border-b border-primary/20 bg-[#0a1411]/80 backdrop-blur-md z-50 relative">
+        <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded bg-[#0fb880] flex items-center justify-center text-white font-bold text-lg shadow-[0_0_15px_rgba(15,184,128,0.4)]">C</div>
           <span className="font-bold text-xl tracking-tight text-white">Commute<span className="text-[#0fb880]">Smart</span></span>
         </div>
-        <div className="hidden md:flex items-center gap-8">
+        <div className="hidden md:flex items-center justify-center flex-1 gap-12">
           <Link className="text-[#0fb880] border-b-2 border-[#0fb880] h-16 flex items-center text-sm font-medium" to="/dashboard">Dashboard</Link>
           <Link className="text-gray-400 hover:text-white transition-colors text-sm font-medium" to="/alerts">Community</Link>
           <Link className="text-gray-400 hover:text-white transition-colors text-sm font-medium" to="/profile">Profile</Link>
         </div>
-        <div className="flex items-center gap-4">
-          <div className="flex flex-col items-end">
-            <span className="text-[10px] text-gray-400 font-medium uppercase tracking-wider">Punjab Eco-Rank</span>
-            <span className="text-sm font-bold text-[#0fb880]">#142 Chandigarh</span>
-          </div>
-          <div className="h-9 w-9 rounded-full border-2 border-[#0fb880]/30 p-0.5">
-            <div className="w-full h-full rounded-full bg-[#0fb880]/30 flex items-center justify-center text-white font-bold text-sm">
-              U
-            </div>
+        <div className="flex items-center justify-end">
+          <div className="relative z-[100]">
+            <UserMenu />
           </div>
         </div>
       </nav>
@@ -679,7 +801,7 @@ export function Dashboard() {
                   SHARE
                 </button>
                 <button 
-                  onClick={() => toast.success('Report feature coming soon!')}
+                  onClick={() => console.log('Report feature coming soon')}
                   className="bg-red-500/20 hover:bg-red-500/30 text-red-400 text-[10px] font-bold px-3 py-1.5 rounded-full transition-colors"
                 >
                   REPORT +
@@ -772,7 +894,7 @@ export function Dashboard() {
               {/* CONNECTED TO BACKEND: Show "Read More" only for default feed */}
               {!routeCenter && !isLoadingAlerts && (
                 <motion.button 
-                  onClick={() => toast.success('Loading more reports...')}
+                  onClick={() => console.log('Loading more reports...')}
                   className="w-full py-2 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center gap-2 text-sm text-gray-300 hover:text-white transition-colors group"
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
