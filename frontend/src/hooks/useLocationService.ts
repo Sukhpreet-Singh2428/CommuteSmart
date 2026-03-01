@@ -43,11 +43,11 @@ interface UseLocationServiceReturn {
   reconnectSocket: () => void;
 }
 
-// Default Ludhiana coordinates
-const DEFAULT_LOCATION: [number, number] = [30.91, 75.86];
+// Default Chandigarh coordinates (more central for Punjab region)
+const DEFAULT_LOCATION: [number, number] = [30.73, 76.78];
 
 export const useLocationService = (): UseLocationServiceReturn => {
-  const [userLocation, setUserLocation] = useState<[number, number] | null>(DEFAULT_LOCATION);
+  const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
   const [buses, setBuses] = useState<Bus[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -62,12 +62,15 @@ export const useLocationService = (): UseLocationServiceReturn => {
 
     newSocket.on('connect', () => {
       console.log('Connected to backend Socket.io server');
-      toast.success('Real-time updates connected! 🚌');
+      // Removed toast to reduce notification spam
     });
 
     newSocket.on('disconnect', () => {
       console.log('Disconnected from Socket.io server');
-      toast.error('Real-time updates disconnected');
+      // Only show disconnect toast if it wasn't a page refresh
+      if (document.visibilityState === 'visible') {
+        toast.error('Real-time updates disconnected');
+      }
     });
 
     // CONNECTED TO BACKEND: Listen for real-time location updates
@@ -79,6 +82,8 @@ export const useLocationService = (): UseLocationServiceReturn => {
     newSocket.on('error', (err: any) => {
       console.error('Socket error:', err);
       setError('Connection error');
+      // Only show socket error toast if it's a persistent issue
+      // Removed to reduce notification spam
     });
 
     setSocket(newSocket);
@@ -134,8 +139,9 @@ export const useLocationService = (): UseLocationServiceReturn => {
       );
       
       if (response.data.success) {
-        toast.success('Location shared successfully! 📍');
-        console.log('Location shared:', response.data);
+        console.log('Location shared successfully:', response.data);
+        // Only show success toast if user explicitly clicked the share button
+        // Removed automatic toast to reduce notification spam
       } else {
         throw new Error('Failed to share location');
       }
@@ -152,24 +158,52 @@ export const useLocationService = (): UseLocationServiceReturn => {
   // Get current user location using browser geolocation
   const getCurrentLocation = useCallback(async (): Promise<[number, number] | null> => {
     return new Promise((resolve) => {
+      console.log('📍 Requesting user location...');
+      
       if (!navigator.geolocation) {
+        console.error('❌ Geolocation not supported');
         toast.error('Geolocation is not supported by your browser');
         resolve(DEFAULT_LOCATION);
         return;
       }
 
+      console.log('📍 Calling navigator.geolocation.getCurrentPosition...');
       navigator.geolocation.getCurrentPosition(
         (position) => {
           const location: [number, number] = [
             position.coords.latitude,
             position.coords.longitude
           ];
+          console.log('✅ User location obtained:', location);
           setUserLocation(location);
+          // Only show location success toast on first load, not on refresh
+          if (!sessionStorage.getItem('locationToastShown')) {
+            toast.success('Location detected! 📍');
+            sessionStorage.setItem('locationToastShown', 'true');
+          }
           resolve(location);
         },
         (error) => {
-          console.error('Geolocation error:', error);
-          toast('Using default location (Ludhiana)', { icon: '⚠️' });
+          console.error('❌ Geolocation error:', error);
+          let errorMessage = 'Location access denied';
+          
+          switch(error.code) {
+            case error.PERMISSION_DENIED:
+              errorMessage = 'Location permission denied by user';
+              console.log('❌ User denied location permission');
+              break;
+            case error.POSITION_UNAVAILABLE:
+              errorMessage = 'Location information unavailable';
+              break;
+            case error.TIMEOUT:
+              errorMessage = 'Location request timed out';
+              break;
+            default:
+              errorMessage = 'Unknown error occurred';
+              break;
+          }
+          
+          toast.error(`${errorMessage}. Using default location (Chandigarh)`, { icon: '⚠️' });
           setUserLocation(DEFAULT_LOCATION);
           resolve(DEFAULT_LOCATION);
         },

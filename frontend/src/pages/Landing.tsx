@@ -1,7 +1,12 @@
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import { UserMenu } from '../components/UserMenu';
+import { useAuth } from '../context/AuthContext';
 
 export function Landing() {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  
   // POLISHED: Animation variants for smooth transitions
   const fadeInUp = {
     initial: { opacity: 0, y: 30 },
@@ -13,6 +18,14 @@ export function Landing() {
       transition: {
         staggerChildren: 0.1
       }
+    }
+  };
+
+  const handleGetStarted = () => {
+    if (user) {
+      navigate('/dashboard');
+    } else {
+      navigate('/register');
     }
   };
 
@@ -32,13 +45,19 @@ export function Landing() {
               <a className="text-sm font-medium text-gray-300 hover:text-primary transition-colors" href="#features">Features</a>
               <a className="text-sm font-medium text-gray-300 hover:text-primary transition-colors" href="#how-it-works">How it Works</a>
               <a className="text-sm font-medium text-gray-300 hover:text-primary transition-colors" href="#cities">Cities</a>
-              <Link className="text-sm font-medium text-primary hover:text-primary-dark transition-colors" to="/login">Login</Link>
-              <Link
-                className="px-5 py-2.5 rounded-full bg-primary hover:bg-primary-dark text-white text-sm font-semibold transition-all shadow-lg shadow-primary/20"
-                to="/register"
-              >
-                Get App
-              </Link>
+              {user ? (
+                <UserMenu />
+              ) : (
+                <>
+                  <Link className="text-sm font-medium text-primary hover:text-primary-dark transition-colors" to="/login">Login</Link>
+                  <Link
+                    className="px-5 py-2.5 rounded-full bg-primary hover:bg-primary-dark text-white text-sm font-semibold transition-all shadow-lg shadow-primary/20"
+                    to="/register"
+                  >
+                    Get App
+                  </Link>
+                </>
+              )}
             </div>
             <div className="md:hidden flex items-center">
               <button type="button" className="text-gray-300 hover:text-white" aria-label="Menu">
@@ -117,17 +136,17 @@ export function Landing() {
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
             >
-              <Link
+              <motion.button
+                onClick={handleGetStarted}
                 className="w-full sm:w-auto px-8 py-4 rounded-full bg-primary text-white font-bold text-lg btn-glow flex items-center justify-center gap-2 group"
-                to="/register"
               >
-                Get Started Free
+                {user ? 'Go to Dashboard' : 'Get Started Free'}
                 <motion.span 
                   className="material-icons text-sm group-hover:translate-x-1 transition-transform"
                 >
-                  arrow_forward
+                  {user ? 'dashboard' : 'arrow_forward'}
                 </motion.span>
-              </Link>
+              </motion.button>
             </motion.div>
             <motion.div
               className="w-full sm:w-auto"
@@ -473,13 +492,20 @@ export function Landing() {
             Download CommuteSmart today and join the movement towards a cleaner, faster, and smarter commute in Chandigarh, Rajpura, Patiala & Ambala.
           </p>
           <div className="flex flex-col sm:flex-row justify-center gap-4">
-            <button type="button" className="bg-white text-background-dark hover:bg-gray-100 px-8 py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-3 transition-colors shadow-lg mx-auto">
-              <span className="material-icons text-2xl">apple</span>
+            <motion.button
+              onClick={handleGetStarted}
+              className="bg-white text-background-dark hover:bg-gray-100 px-8 py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-3 transition-colors shadow-lg mx-auto"
+            >
+              <span className="material-icons text-2xl">
+                {user ? 'dashboard' : 'apple'}
+              </span>
               <div className="text-left leading-tight">
-                <span className="block text-xs font-normal">Download on the</span>
-                <span>App Store</span>
+                <span className="block text-xs font-normal">
+                  {user ? 'Go to' : 'Download on the'}
+                </span>
+                <span>{user ? 'Dashboard' : 'App Store'}</span>
               </div>
-            </button>
+            </motion.button>
             <button type="button" className="glass-card border border-white/20 hover:bg-white/10 text-white px-8 py-4 rounded-xl font-bold text-lg flex items-center justify-center gap-3 transition-colors shadow-lg mx-auto">
               <span className="material-icons text-2xl">android</span>
               <div className="text-left leading-tight">

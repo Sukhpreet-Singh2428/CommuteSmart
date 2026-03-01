@@ -6,83 +6,103 @@ axios.defaults.withCredentials = true;
 
 interface User {
   id: string;
-  name: string;
   email: string;
-  xp: number;
-  co2Saved: number;
-  avatar?: string;
+  points: number;
+  carbonSaved: number;
+  badges: string[];
+  honestyScore: number;
 }
 
 interface AuthContextType {
   user: User | null;
-  token: string | null;
   login: (email: string, password: string) => Promise<void>;
-  register: (name: string, email: string, password: string) => Promise<void>;
+  register: (email: string, password: string) => Promise<void>;
   logout: () => void;
   isAuthenticated: boolean;
+  isLoading: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
+  // Load user data from localStorage on mount
   useEffect(() => {
-    // CONNECTED TO BACKEND: Check authentication status on app load
-    // Since we're using httpOnly cookies, we need to verify with the backend
-    const checkAuth = async () => {
+    const loadUserFromStorage = () => {
       try {
-        const response = await axios.get(`${import.meta.env.VITE_API_URL}/api/auth/me`, {
-          withCredentials: true
-        });
-        setUser(response.data.user);
+        const storedUser = localStorage.getItem('commuteSmart_user');
+        if (storedUser) {
+          const userData = JSON.parse(storedUser);
+          setUser(userData);
+        }
       } catch (error) {
-        // User is not authenticated, clear state
-        setUser(null);
-        setToken(null);
+        console.error('Error loading user from localStorage:', error);
+        localStorage.removeItem('commuteSmart_user');
       }
     };
-    
+
+    loadUserFromStorage();
     checkAuth();
   }, []);
 
+  // Check authentication status with backend
+  const checkAuth = async () => {
+    try {
+      const response = await axios.get(`${import.meta.env.VITE_API_URL}/api/auth/me`, {
+        withCredentials: true
+      });
+      
+      if (response.data.success && response.data.user) {
+        setUser(response.data.user);
+        // Store user data in localStorage for persistence
+        localStorage.setItem('commuteSmart_user', JSON.stringify(response.data.user));
+      }
+    } catch (error) {
+      // User is not authenticated, clear state and localStorage
+      setUser(null);
+      localStorage.removeItem('commuteSmart_user');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const login = useCallback(async (email: string, password: string) => {
     try {
-      // CONNECTED TO BACKEND: Call real login API with axios and withCredentials
       const response = await axios.post(`${import.meta.env.VITE_API_URL}/api/auth/login`, {
         email,
         password
       }, {
-        withCredentials: true // Ensure cookies are sent and received
+        withCredentials: true
       });
       
-      // User data will be managed by the JWT token in httpOnly cookie
-      // Backend sends user data in response body
-      setUser(response.data.user);
+      if (response.data.success && response.data.user) {
+        setUser(response.data.user);
+        // Store user data in localStorage for persistence
+        localStorage.setItem('commuteSmart_user', JSON.stringify(response.data.user));
+      }
     } catch (error: any) {
-      // CONNECTED TO BACKEND: Proper error handling with backend error messages
       const errorMessage = error.response?.data?.message || 'Login failed';
       throw new Error(errorMessage);
     }
   }, []);
 
-  const register = useCallback(async (name: string, email: string, password: string) => {
+  const register = useCallback(async (email: string, password: string) => {
     try {
-      // CONNECTED TO BACKEND: Call real signup API with axios and withCredentials
       const response = await axios.post(`${import.meta.env.VITE_API_URL}/api/auth/signup`, {
-        name,
         email,
         password
       }, {
-        withCredentials: true // Ensure cookies are sent and received
+        withCredentials: true
       });
       
-      // User data will be managed by the JWT token in httpOnly cookie
-      // Backend sends user data in response body
-      setUser(response.data.user);
+      if (response.data.success && response.data.user) {
+        setUser(response.data.user);
+        // Store user data in localStorage for persistence
+        localStorage.setItem('commuteSmart_user', JSON.stringify(response.data.user));
+      }
     } catch (error: any) {
-      // CONNECTED TO BACKEND: Proper error handling with backend error messages
       const errorMessage = error.response?.data?.message || 'Registration failed';
       throw new Error(errorMessage);
     }
@@ -90,17 +110,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = useCallback(async () => {
     try {
-      // CONNECTED TO BACKEND: Call logout API to clear server-side session
       await axios.post(`${import.meta.env.VITE_API_URL}/api/auth/logout`, {}, {
         withCredentials: true
       });
     } catch (error) {
-      // Even if logout API fails, clear local state
       console.error('Logout API failed:', error);
     } finally {
-      // Clear local state regardless of API call success
+      // Clear local state and localStorage
       setUser(null);
-      setToken(null);
+      localStorage.removeItem('commuteSmart_user');
     }
   }, []);
 
@@ -108,11 +126,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     <AuthContext.Provider
       value={{
         user,
-        token,
         login,
         register,
         logout,
-        isAuthenticated: !!token,
+        isAuthenticated: !!user,
+        isLoading
       }}
     >
       {children}
