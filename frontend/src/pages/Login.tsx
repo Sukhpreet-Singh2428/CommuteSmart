@@ -41,10 +41,10 @@ export function Login() {
       <div className="w-full lg:w-[450px] xl:w-[550px] flex flex-col justify-center p-8 lg:p-16 z-20 relative bg-background-dark/80 backdrop-blur-sm border-r border-white/5">
         <div className="w-full max-w-md mx-auto my-2">
           <div className="flex items-center gap-3 mb-8">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-primary to-secondary flex items-center justify-center shadow-lg shadow-primary/20">
-              <span className="material-symbols-outlined text-white font-bold">route</span>
+            <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
+              <span className="material-icons text-white text-lg">directions_bus</span>
             </div>
-            <span className="font-bold text-2xl tracking-tight text-white">CommuteSmart</span>
+            <span className="font-bold text-xl tracking-tight text-white">CommuteSmart</span>
           </div>
           
           <div className="mb-3">

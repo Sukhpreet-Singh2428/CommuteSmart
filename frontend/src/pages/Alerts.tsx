@@ -140,9 +140,11 @@ export function Alerts() {
     <div className="min-h-screen w-full flex flex-col bg-[#0a1411]">
       {/* Navigation */}
       <nav className="h-16 flex items-center justify-between px-6 border-b border-primary/20 bg-[#0a1411]/80 backdrop-blur-md z-50">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded bg-[#0fb880] flex items-center justify-center text-white font-bold text-lg shadow-[0_0_15px_rgba(15,184,128,0.4)]">C</div>
-          <span className="font-bold text-xl tracking-tight text-white">Commute<span className="text-[#0fb880]">Smart</span></span>
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
+            <span className="material-icons text-white text-lg">directions_bus</span>
+          </div>
+          <span className="font-bold text-xl tracking-tight text-white">CommuteSmart</span>
         </div>
         <div className="hidden md:flex items-center gap-8">
           <Link className="text-gray-400 hover:text-white transition-colors text-sm font-medium" to="/dashboard">Dashboard</Link>

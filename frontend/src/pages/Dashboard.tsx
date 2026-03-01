@@ -531,8 +531,10 @@ export function Dashboard() {
       {/* Navigation */}
       <nav className="h-16 flex items-center justify-between px-8 border-b border-primary/20 bg-[#0a1411]/80 backdrop-blur-md z-50 relative">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded bg-[#0fb880] flex items-center justify-center text-white font-bold text-lg shadow-[0_0_15px_rgba(15,184,128,0.4)]">C</div>
-          <span className="font-bold text-xl tracking-tight text-white">Commute<span className="text-[#0fb880]">Smart</span></span>
+          <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
+            <span className="material-icons text-white text-lg">directions_bus</span>
+          </div>
+          <span className="font-bold text-xl tracking-tight text-white">CommuteSmart</span>
         </div>
         <div className="hidden md:flex items-center justify-center flex-1 gap-12">
           <Link className="text-[#0fb880] border-b-2 border-[#0fb880] h-16 flex items-center text-sm font-medium" to="/dashboard">Dashboard</Link>
