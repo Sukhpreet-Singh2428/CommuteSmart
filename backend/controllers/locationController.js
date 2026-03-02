@@ -24,6 +24,8 @@ exports.reportLocation = async (req, res) => {
       vehicleId: vehicleId || "Unknown-Bus"
     });
 
+    const userId = req.user.id;   //? From auth middleware
+    report.reportedBy = userId;
     await report.save();
 
     // Broadcast to all users
