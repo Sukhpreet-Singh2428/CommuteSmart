@@ -27,10 +27,7 @@ const io = socketIo(server, {
 //? Middleware
 app.use(express.json());
 
-app.use(cookieParser({
-  secure: process.env.NODE_ENV === 'production',
-  sameSite: 'none'
-}));
+app.use(cookieParser());
 
 app.use(cors({
   origin: [

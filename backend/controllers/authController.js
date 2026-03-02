@@ -22,16 +22,14 @@ exports.signup = async (req, res) => {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
             sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
-            maxAge: 7*24*60*60*1000,
-            domain: process.env.NODE_ENV === 'production' ? '.onrender.com' : undefined
+            maxAge: 7*24*60*60*1000
         });
 
         console.log('🍪 Signup cookie set:', {
             token: token.substring(0, 20) + '...',
             NODE_ENV: process.env.NODE_ENV,
             secure: process.env.NODE_ENV === 'production',
-            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
-            domain: process.env.NODE_ENV === 'production' ? '.onrender.com' : undefined
+            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict'
         });
 
         res.status(201).json({
@@ -65,8 +63,7 @@ exports.login = async (req, res) => {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
             sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
-            maxAge: 7*24*60*60*1000,
-            domain: process.env.NODE_ENV === 'production' ? '.onrender.com' : undefined
+            maxAge: 7*24*60*60*1000
         });
 
         res.json({
@@ -107,8 +104,7 @@ exports.logout = async (req, res) => {
     res.clearCookie('token', {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
-        domain: process.env.NODE_ENV === 'production' ? '.onrender.com' : undefined
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict'
     });
     res.json({success: true, message: "Logged out"});
 };
