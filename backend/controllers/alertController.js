@@ -24,7 +24,18 @@ exports.createAlert = async (req, res) => {
 };
 
 exports.getAlerts = async (req, res) => {
-    const alerts = await Report.find({type: 'alert'}).sort({timestamp: -1}).limit(20);
+    console.log('🔍 Backend getAlerts called');
+    const alerts = await Report.find({type: 'alert'}).sort({timeStamp: -1}).limit(20);
+    console.log('📊 Alerts found:', {
+        count: alerts.length,
+        alerts: alerts.map(alert => ({
+            id: alert._id,
+            message: alert.message,
+            location: alert.location,
+            coordinates: alert.location?.coordinates,
+            type: alert.type
+        }))
+    });
     res.json({success: true, alerts});
 };
 

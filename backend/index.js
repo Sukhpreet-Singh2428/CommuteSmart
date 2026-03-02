@@ -46,7 +46,7 @@ const locationRoutes = require('./routes/location');
 app.use('/api/location', locationRoutes);
 
 const alertRoutes = require('./routes/alerts');
-app.use('api/alerts', alertRoutes);
+app.use('/api/alerts', alertRoutes);
 
 app.get('/', (req, res) => {
   res.json({ message: "CommuteSmart Backend is Running!" });
