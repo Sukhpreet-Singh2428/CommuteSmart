@@ -6,6 +6,19 @@ import { motion } from 'framer-motion';
 import { useLocationService, Bus } from '../hooks/useLocationService';
 import toast from 'react-hot-toast';
 
+// Error boundary for MapView
+const MapViewErrorBoundary = ({ children }: { children: React.ReactNode }) => {
+  return (
+    <div className="w-full h-full flex items-center justify-center">
+      <div className="text-white text-center">
+        <span className="material-icons text-6xl mb-4">error_outline</span>
+        <p className="text-lg">Map Error</p>
+        <p className="text-sm text-gray-400 mt-2">Unable to load map component</p>
+      </div>
+    </div>
+  );
+};
+
 // CONNECTED TO BACKEND: Enhanced pulse icon for real-time bus markers
 const pulseIcon = (color: string, type?: 'bus' | 'metro' | 'alert' | 'warning' | 'error' | 'info', isPulsing?: boolean) => {
   const iconColor = type === 'alert' || type === 'warning' || type === 'error' || type === 'info' ? '#eab308' : color;
@@ -110,29 +123,32 @@ export function MapView({ routePath, startPoint, endPoint, routeAlerts }: {
   endPoint?: [number, number]; 
   routeAlerts?: any[];
 }) {
-  // CONNECTED TO BACKEND: Use location service hook for real-time data
-  const { 
-    buses, 
-    userLocation, 
-    isLoading, 
-    error, 
-    fetchNearbyBuses, 
-    shareLocation,
-    getCurrentLocation
-  } = useLocationService();
-  
-  const [selectedMarker, setSelectedMarker] = useState<string | null>(null);
-  const [mapCenter, setMapCenter] = useState<[number, number]>(userLocation || defaultCenter);
-  const mapRef = useRef<any>(null);
-  
-  // CONNECTED TO BACKEND: Initialize map with user location if available
-  useEffect(() => {
-    console.log('🗺️ MapView - userLocation changed:', userLocation);
-    if (userLocation) {
-      console.log('🗺️ MapView - Setting map center to user location:', userLocation);
-      setMapCenter(userLocation);
-    }
-  }, [userLocation]);
+  try {
+    console.log('🗺️ MapView component rendering...');
+    
+    // CONNECTED TO BACKEND: Use location service hook for real-time data
+    const { 
+      buses, 
+      userLocation, 
+      isLoading, 
+      error, 
+      fetchNearbyBuses, 
+      shareLocation,
+      getCurrentLocation
+    } = useLocationService();
+    
+    const [selectedMarker, setSelectedMarker] = useState<string | null>(null);
+    const [mapCenter, setMapCenter] = useState<[number, number]>(userLocation || defaultCenter);
+    const mapRef = useRef<any>(null);
+    
+    // CONNECTED TO BACKEND: Initialize map with user location if available
+    useEffect(() => {
+      console.log('🗺️ MapView - userLocation changed:', userLocation);
+      if (userLocation) {
+        console.log('🗺️ MapView - Setting map center to user location:', userLocation);
+        setMapCenter(userLocation);
+      }
+    }, [userLocation]);
   
   // Request user location on mount if not already available
   useEffect(() => {
@@ -568,4 +584,16 @@ export function MapView({ routePath, startPoint, endPoint, routeAlerts }: {
       )}
     </div>
   );
+  } catch (error) {
+    console.error('🗺️ MapView error:', error);
+    return (
+      <div className="w-full h-full flex items-center justify-center">
+        <div className="text-white text-center">
+          <span className="material-icons text-6xl mb-4">error_outline</span>
+          <p className="text-lg">Map Error</p>
+          <p className="text-sm text-gray-400 mt-2">Unable to load map component</p>
+        </div>
+      </div>
+    );
+  }
 }
