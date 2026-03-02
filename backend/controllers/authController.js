@@ -66,6 +66,14 @@ exports.login = async (req, res) => {
             maxAge: 7*24*60*60*1000
         });
 
+        console.log('🍪 Login cookie set:', {
+            token: token.substring(0, 20) + '...',
+            NODE_ENV: process.env.NODE_ENV,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
+            responseHeaders: res.getHeaders()
+        });
+
         res.json({
             success: true,
             message: "Login Successful",
