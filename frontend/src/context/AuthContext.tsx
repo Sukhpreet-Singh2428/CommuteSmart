@@ -57,16 +57,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     loadUserFromStorage();
   }, []);
 
-  // Check authentication status with backend if we don't have user data in localStorage
+  // Only check authentication status with backend if we have stored user data
   useEffect(() => {
     const storedUser = typeof window !== 'undefined' && window.localStorage ? 
       localStorage.getItem('commuteSmart_user') : null;
     
-    if (!storedUser) {
-      checkAuth();
-    } else {
-      // If we have stored user, still verify with backend but don't clear localStorage on failure
+    if (storedUser) {
+      // If we have stored user, verify with backend
       verifyAuthWithBackend();
+      setIsLoading(false);
+    } else {
+      // No stored user, set loading to false without checking auth
       setIsLoading(false);
     }
   }, []);
