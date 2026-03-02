@@ -92,27 +92,83 @@ export function Dashboard() {
   // CONNECTED TO BACKEND: Fetch route-specific alerts
   const fetchRouteAlerts = async (center: [number, number]) => {
     setIsLoadingAlerts(true);
+    console.log('🎯 fetchRouteAlerts called with center:', center);
     try {
       if (routeData.startCoords && routeData.endCoords) {
         // Get all alerts and filter by proximity to route
         const response = await alertsAPI.getAlerts();
         
         console.log('🔍 All alerts fetched:', response.data);
+        console.log('📊 Response structure:', {
+          success: response.data.success,
+          alertsCount: response.data.alerts?.length || 0,
+          firstAlert: response.data.alerts?.[0]
+        });
         
         if (response.data.success && response.data.alerts) {
+          console.log('🔍 Filtering alerts for route center:', center);
+          
+          // Combine backend alerts with community alerts from localStorage
+          const communityAlerts = JSON.parse(localStorage.getItem('commuteSmart_alerts') || '[]');
+          const allAlerts = [...response.data.alerts, ...communityAlerts];
+          
+          console.log('📊 Combined alerts:', {
+            backend: response.data.alerts.length,
+            community: communityAlerts.length,
+            total: allAlerts.length
+          });
+          
           // Filter alerts by proximity to route center (within ~8km)
-          const nearbyAlerts = response.data.alerts.filter((alert: any) => {
-            if (!alert.lat || !alert.long) return false;
-            const distance = calculateDistance(center[0], center[1], alert.lat, alert.long);
-            return distance <= 8; // 8km radius
+          const nearbyAlerts = allAlerts.filter((alert: any) => {
+            // Backend stores coordinates as location.coordinates: [longitude, latitude]
+            // Community alerts have lat/long properties
+            console.log('📍 Processing alert:', {
+              message: alert.message,
+              location: alert.location,
+              coordinates: alert.location?.coordinates,
+              lat: alert.lat,
+              long: alert.long
+            });
+            
+            let latitude, longitude;
+            
+            if (alert.location && alert.location.coordinates && alert.location.coordinates.length >= 2) {
+              // Backend alert structure
+              [longitude, latitude] = alert.location.coordinates;
+            } else if (alert.lat && alert.long) {
+              // Community alert structure
+              latitude = alert.lat;
+              longitude = alert.long;
+            } else {
+              console.log('❌ Alert missing coordinates, skipping');
+              return false;
+            }
+            
+            const distance = calculateDistance(center[0], center[1], latitude, longitude);
+            console.log(`📍 Alert distance: ${distance.toFixed(2)}km for alert:`, alert.message);
+            return distance <= 50; // Increased to 50km radius for testing
           });
           
           console.log('🔍 Filtered nearby alerts:', nearbyAlerts);
-          setRouteAlerts(nearbyAlerts);
+          console.log('📊 Final counts:', {
+            totalAlerts: response.data.alerts.length,
+            nearbyAlerts: nearbyAlerts.length,
+            routeCenter: center
+          });
+          
+          // If no alerts found within radius, show all alerts instead of empty
+          if (nearbyAlerts.length === 0) {
+            console.log('🔄 No alerts within 50km, showing all alerts');
+            setRouteAlerts(allAlerts);
+          } else {
+            setRouteAlerts(nearbyAlerts);
+          }
         } else {
+          console.log('❌ No alerts in response or success=false');
           setRouteAlerts([]);
         }
       } else {
+        console.log('🔄 No route coords, showing general alerts');
         // Fallback to general alerts if no route
         const response = await alertsAPI.getAlerts();
         

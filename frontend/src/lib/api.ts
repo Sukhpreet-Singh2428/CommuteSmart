@@ -20,6 +20,9 @@ export const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  // Ensure cookies work in cross-origin scenarios
+  xsrfCookieName: 'XSRF-TOKEN',
+  xsrfHeaderName: 'X-XSRF-TOKEN',
 });
 
 // Request interceptor to add auth token if available
