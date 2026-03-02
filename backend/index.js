@@ -25,18 +25,19 @@ const io = socketIo(server, {
 });
 
 //? Middleware
+app.use(express.json());
+
+app.use(cookieParser({
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: 'none'
+}));
+
 app.use(cors({
   origin: [
     "http://localhost:3000",
     "https://commute-smart.vercel.app"
   ],
   credentials: true
-}));
-
-app.use(express.json());
-app.use(cookieParser({
-  secure: process.env.NODE_ENV === 'production',
-  sameSite: 'none'
 }));
 
 app.set('io', io);
