@@ -141,7 +141,7 @@ export function Alerts() {
   const [filter, setFilter] = useState<'all' | 'verified' | 'nearby' | 'recent'>('all');
   const { user } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
-  const [alerts, setAlerts] = useState<any[]>([]);
+  const [alerts, setAlerts] = useState<any[]>(punjabAlerts); // Start with mock data
   const [upvotedAlerts, setUpvotedAlerts] = useState<Set<string>>(new Set());
   const [socket, setSocket] = useState<Socket | null>(null);
   const [showReportModal, setShowReportModal] = useState(false);
@@ -154,20 +154,27 @@ export function Alerts() {
     try {
       newSocket = io(getSocketUrl(), {
         withCredentials: true,
-        transports: ['websocket', 'polling']
+        transports: ['websocket', 'polling'],
+        timeout: 10000,
+        reconnection: true,
+        reconnectionAttempts: 3,
+        reconnectionDelay: 1000
       });
 
       newSocket.on('connect', () => {
-        console.log('Connected to alerts Socket.io server');
+        // Connected successfully
+      });
+
+      newSocket.on('connect_error', () => {
+        // Connection error - continue without socket
       });
 
       newSocket.on('disconnect', () => {
-        console.log('Disconnected from alerts Socket.io server');
+        // Disconnected gracefully
       });
 
       // CONNECTED TO BACKEND: Listen for new alerts
       newSocket.on('newAlert', (alert: any) => {
-        console.log('Received new alert:', alert);
         setAlerts(prev => {
           // Prevent duplicates
           const exists = prev.some(existing => existing._id === alert._id);
@@ -181,7 +188,7 @@ export function Alerts() {
 
       setSocket(newSocket);
     } catch (error) {
-      console.error('Failed to initialize socket:', error);
+      // Failed to initialize socket, continue without it
     }
 
     return () => {
@@ -197,11 +204,32 @@ export function Alerts() {
     try {
       const response = await alertsAPI.getAlerts();
       if (response.data.success && response.data.alerts) {
-        setAlerts(response.data.alerts);
+        // Append new alerts to existing mock data
+        const backendAlerts = response.data.alerts.map((alert: any) => ({
+          ...alert,
+          id: alert._id,
+          title: alert.message || 'Community Alert',
+          description: alert.message || 'No description available',
+          location: 'Community Report',
+          timeAgo: 'Just now',
+          reporter: 'Community User',
+          avatar: 'CU',
+          type: 'community',
+          icon: 'report',
+          iconColor: 'text-blue-500',
+          verified: false,
+          upvotes: alert.upvotes || 0,
+          comments: 0,
+          liked: false,
+          createdAt: alert.timeStamp || new Date()
+        }));
+        
+        // Combine mock data with backend alerts
+        setAlerts([...punjabAlerts, ...backendAlerts]);
       }
     } catch (error: any) {
-      console.error('Error fetching alerts:', error);
-      toast.error('Failed to fetch alerts');
+      // Keep existing mock data if API fails
+      setAlerts(punjabAlerts);
     } finally {
       setIsLoading(false);
     }
@@ -257,17 +285,18 @@ export function Alerts() {
         fetchAlerts(); // Refresh alerts
       }
     } catch (error: any) {
-      console.error('Error creating alert:', error);
-      toast.error('Failed to report alert');
+      // Handle error silently
     }
   };
 
   const filteredAlerts = alerts.filter(alert => {
-    if (filter === 'verified') return alert.verified;
+    if (!alert) return false;
+    
+    if (filter === 'verified') return alert.verified === true;
     if (filter === 'nearby') return alert.location && (alert.location.includes('Chandigarh') || alert.location.includes('Sector'));
     if (filter === 'recent') {
       // Calculate if alert is recent (within 30 minutes)
-      const alertTime = new Date(alert.createdAt);
+      const alertTime = new Date(alert.createdAt || alert.timeAgo || Date.now());
       const now = new Date();
       const diffMinutes = (now.getTime() - alertTime.getTime()) / (1000 * 60);
       return diffMinutes <= 30;
