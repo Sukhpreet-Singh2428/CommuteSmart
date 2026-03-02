@@ -1,11 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
-import axios from 'axios';
 import { io, Socket } from 'socket.io-client';
+import { locationAPI, getSocketUrl } from '../lib/api';
 import toast from 'react-hot-toast';
-
-// CONNECTED TO BACKEND: API base URL and Socket.io connection
-const API_BASE_URL = import.meta.env.VITE_API_URL;
-const SOCKET_URL = import.meta.env.VITE_API_URL;
 
 // Bus data structure from backend API
 export interface Bus {
@@ -38,7 +34,7 @@ interface UseLocationServiceReturn {
   
   // Actions
   fetchNearbyBuses: (lat: number, lng: number) => Promise<void>;
-  shareLocation: (lat: number, lng: number) => Promise<void>;
+  shareLocation: (lat: number, lng: number, vehicleId?: string) => Promise<void>;
   getCurrentLocation: () => Promise<[number, number] | null>;
   reconnectSocket: () => void;
 }
@@ -55,7 +51,7 @@ export const useLocationService = (): UseLocationServiceReturn => {
 
   // CONNECTED TO BACKEND: Initialize Socket.io connection
   useEffect(() => {
-    const newSocket = io(SOCKET_URL, {
+    const newSocket = io(getSocketUrl(), {
       withCredentials: true,
       transports: ['websocket', 'polling']
     });
@@ -99,13 +95,10 @@ export const useLocationService = (): UseLocationServiceReturn => {
     setError(null);
     
     try {
-      const response = await axios.get(
-        `${API_BASE_URL}/api/location/nearby?lat=${lat}&long=${lng}`,
-        { withCredentials: true }
-      );
+      const response = await locationAPI.getNearbyBuses(lat, lng);
       
       if (response.data.success) {
-        setBuses(response.data.buses);
+        setBuses(response.data.buses || []);
         console.log('Fetched nearby buses:', response.data.buses);
       } else {
         throw new Error('Failed to fetch buses');
@@ -121,27 +114,23 @@ export const useLocationService = (): UseLocationServiceReturn => {
   }, []);
 
   // CONNECTED TO BACKEND: Share user location with API
-  const shareLocation = useCallback(async (lat: number, lng: number) => {
+  const shareLocation = useCallback(async (lat: number, lng: number, vehicleId?: string) => {
     setIsLoading(true);
     setError(null);
     
     try {
-      const locationData: UserLocation = {
+      const locationData = {
         latitude: lat,
         longitude: lng,
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        vehicleId
       };
 
-      const response = await axios.post(
-        `${API_BASE_URL}/api/location/report`,
-        locationData,
-        { withCredentials: true }
-      );
+      const response = await locationAPI.reportLocation(lat, lng, vehicleId);
       
       if (response.data.success) {
         console.log('Location shared successfully:', response.data);
-        // Only show success toast if user explicitly clicked the share button
-        // Removed automatic toast to reduce notification spam
+        toast.success('Location shared successfully! 📍');
       } else {
         throw new Error('Failed to share location');
       }
@@ -222,7 +211,7 @@ export const useLocationService = (): UseLocationServiceReturn => {
       socket.disconnect();
     }
     
-    const newSocket = io(SOCKET_URL, {
+    const newSocket = io(getSocketUrl(), {
       withCredentials: true,
       transports: ['websocket', 'polling']
     });

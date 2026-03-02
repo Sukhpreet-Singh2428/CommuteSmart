@@ -1,10 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { MapView } from '../components/MapView';
-import { UserMenu } from '../components/UserMenu';
 import { motion, AnimatePresence } from 'framer-motion';
-import toast from 'react-hot-toast';
+import { SafeMapView } from '../components/SafeMapView';
+import { UserMenu } from '../components/UserMenu';
 import { useLocationService } from '../hooks/useLocationService';
+import { useRoute } from '../context/RouteContext';
+import { alertsAPI } from '../lib/api';
+import toast from 'react-hot-toast';
 import axios from 'axios';
 
 const punjabReports = [
@@ -50,9 +52,8 @@ const transportModes = [
 export function Dashboard() {
   // CONNECTED TO BACKEND: Use location service for real-time data
   const { shareLocation, userLocation, isLoading: locationLoading } = useLocationService();
+  const { routeData, setStartPoint, setEndPoint, setRoutePath } = useRoute();
   
-  const [from, setFrom] = useState('Sector 17, Chandigarh');
-  const [to, setTo] = useState('');
   const [selectedMode, setSelectedMode] = useState<'bus' | 'metro' | 'bike'>('bus');
   const [co2Offset] = useState(12.8);
   const [rewardTokens] = useState(450);
@@ -61,10 +62,15 @@ export function Dashboard() {
   const [isLoading, setIsLoading] = useState(true);
   const [animatedStats, setAnimatedStats] = useState({ co2: 0, tokens: 0, progress: 0 });
   
-  // CONNECTED TO BACKEND: Route search state
-  const [routePath, setRoutePath] = useState<[number, number][] | null>(null);
-  const [routeStart, setRouteStart] = useState<[number, number] | null>(null);
-  const [routeEnd, setRouteEnd] = useState<[number, number] | null>(null);
+  // Memoize increment values to prevent infinite re-renders
+  const incrementValues = useMemo(() => {
+    const steps = 60;
+    return {
+      co2: co2Offset / steps,
+      tokens: rewardTokens / steps,
+      progress: weeklyProgress / steps
+    };
+  }, [co2Offset, rewardTokens, weeklyProgress]);
   
   // CONNECTED TO BACKEND: Dynamic Community Feed state
   const [routeAlerts, setRouteAlerts] = useState<any[]>([]);
@@ -73,6 +79,78 @@ export function Dashboard() {
   
   // ADDED: Geocoding loading state
   const [isGeocoding, setIsGeocoding] = useState(false);
+  
+  // ADDED: Report message state
+  const [reportMessage, setReportMessage] = useState('');
+  
+  // ADDED: Report modal state
+  const [showReportModal, setShowReportModal] = useState(false);
+  
+  // ADDED: Community alerts state for user-reported alerts
+  const [communityAlerts, setCommunityAlerts] = useState<any[]>([]);
+
+  // CONNECTED TO BACKEND: Fetch route-specific alerts
+  const fetchRouteAlerts = async (center: [number, number]) => {
+    setIsLoadingAlerts(true);
+    try {
+      if (routeData.startCoords && routeData.endCoords) {
+        // Get all alerts and filter by proximity to route
+        const response = await alertsAPI.getAlerts();
+        
+        console.log('🔍 All alerts fetched:', response.data);
+        
+        if (response.data.success && response.data.alerts) {
+          // Filter alerts by proximity to route center (within ~8km)
+          const nearbyAlerts = response.data.alerts.filter((alert: any) => {
+            if (!alert.lat || !alert.long) return false;
+            const distance = calculateDistance(center[0], center[1], alert.lat, alert.long);
+            return distance <= 8; // 8km radius
+          });
+          
+          console.log('🔍 Filtered nearby alerts:', nearbyAlerts);
+          setRouteAlerts(nearbyAlerts);
+        } else {
+          setRouteAlerts([]);
+        }
+      } else {
+        // Fallback to general alerts if no route
+        const response = await alertsAPI.getAlerts();
+        
+        if (response.data.success && response.data.alerts) {
+          setRouteAlerts(response.data.alerts);
+        } else {
+          setRouteAlerts([]);
+        }
+      }
+    } catch (error: any) {
+      console.error('❌ Error fetching route alerts:', error);
+      setRouteAlerts([]);
+    } finally {
+      setIsLoadingAlerts(false);
+    }
+  };
+
+  // STABILITY FIX: Use stable references to prevent infinite re-renders
+  const stableFetchGeneralFeed = useCallback(async () => {
+    setIsLoadingAlerts(true);
+    try {
+      const response = await alertsAPI.getAlerts();
+      
+      if (response.data.success && response.data.alerts) {
+        setRouteAlerts(response.data.alerts);
+      } else {
+        setRouteAlerts([]);
+      }
+    } catch (error: any) {
+      console.error('Error fetching general feed:', error);
+      setRouteAlerts([]);
+    } finally {
+      setIsLoadingAlerts(false);
+    }
+  }, []);
+
+  // STABILITY FIX: Use stable reference for route center check
+  const hasRouteCenter = !!routeCenter;
 
   // POLISHED: Simulate loading and animate stats on mount - FIXED: Reduced delay
   useEffect(() => {
@@ -80,31 +158,29 @@ export function Dashboard() {
     return () => clearTimeout(timer);
   }, []);
 
+  // STABILITY FIX: Simplified animation useEffect to prevent infinite loops
   useEffect(() => {
     if (!isLoading) {
       const duration = 2000;
       const steps = 60;
-      const increment = {
-        co2: co2Offset / steps,
-        tokens: rewardTokens / steps,
-        progress: weeklyProgress / steps
-      };
-      
       let currentStep = 0;
+      
       const interval = setInterval(() => {
         currentStep++;
-        setAnimatedStats({
-          co2: Math.min(co2Offset, increment.co2 * currentStep),
-          tokens: Math.min(rewardTokens, increment.tokens * currentStep),
-          progress: Math.min(weeklyProgress, increment.progress * currentStep)
-        });
+        setAnimatedStats(prev => ({
+          co2: Math.min(co2Offset, (co2Offset / steps) * currentStep),
+          tokens: Math.min(rewardTokens, (rewardTokens / steps) * currentStep),
+          progress: Math.min(weeklyProgress, (weeklyProgress / steps) * currentStep)
+        }));
         
-        if (currentStep >= steps) clearInterval(interval);
+        if (currentStep >= steps) {
+          clearInterval(interval);
+        }
       }, duration / steps);
       
       return () => clearInterval(interval);
     }
-  }, [isLoading, co2Offset, rewardTokens, weeklyProgress]);
+  }, [isLoading]); // Only depend on isLoading, not on incrementValues
 
   // ROBUST GEOCODING FOR PUNJAB: Multiple queries + fallback dictionary
   const geocodePlace = async (placeName: string): Promise<[number, number] | null> => {
@@ -198,7 +274,7 @@ export function Dashboard() {
     
     // Check fallback dictionary first with multiple patterns
     if (punjabFallbacks[cleanName]) {
-      const coords = punjabFallbacks[cleanName];
+      const coords = punjabFallbacks[cleanName] as [number, number];
       console.log(`Using fallback coordinates for "${placeName}": [${coords[0]}, ${coords[1]}]`);
       return coords;
     }
@@ -211,13 +287,13 @@ export function Dashboard() {
       const sectorKeyShort = `sector ${sectorNum}`;
       
       if (punjabFallbacks[sectorKey]) {
-        const coords = punjabFallbacks[sectorKey];
+        const coords = punjabFallbacks[sectorKey] as [number, number];
         console.log(`Using sector fallback for "${placeName}": [${coords[0]}, ${coords[1]}]`);
         return coords;
       }
       
       if (punjabFallbacks[sectorKeyShort]) {
-        const coords = punjabFallbacks[sectorKeyShort];
+        const coords = punjabFallbacks[sectorKeyShort] as [number, number];
         console.log(`Using short sector fallback for "${placeName}": [${coords[0]}, ${coords[1]}]`);
         return coords;
       }
@@ -242,7 +318,7 @@ export function Dashboard() {
     for (const [city, coords] of Object.entries(cityPatterns)) {
       if (cleanName.includes(city)) {
         console.log(`Using city fallback for "${placeName}": [${coords[0]}, ${coords[1]}]`);
-        return coords;
+        return coords as [number, number];
       }
     }
     
@@ -320,208 +396,257 @@ export function Dashboard() {
 
   // CONNECTED TO BACKEND: Share location handler
   const handleShareLocation = async () => {
-    if (userLocation) {
-      await shareLocation(userLocation[0], userLocation[1]);
-    } else {
-      // Removed toast to reduce notification spam - user can see location status in UI
-      console.error('Location not available for sharing');
+    try {
+      if (userLocation) {
+        await shareLocation(userLocation[0], userLocation[1], 'user');
+        toast.success('Location shared successfully! 📍');
+      } else {
+        toast.error('Location not available. Please enable location services.');
+      }
+    } catch (error) {
+      console.error('Error sharing location:', error);
+      toast.error('Failed to share location. Please try again.');
+    }
+  };
+
+  // CONNECTED TO BACKEND: Share route handler
+  const handleShareRoute = async () => {
+    try {
+      if (!routeData.startPoint || !routeData.endPoint) {
+        toast.error('Please enter both start and end points to share route');
+        return;
+      }
+
+      // Share the route details
+      const routeInfo = {
+        startPoint: routeData.startPoint,
+        endPoint: routeData.endPoint,
+        startCoords: routeData.startCoords,
+        endCoords: routeData.endCoords,
+        routePath: routeData.routePath,
+        timestamp: new Date().toISOString()
+      };
+
+      // Here you would send this to your backend API
+      console.log('Sharing route:', routeInfo);
+      toast.success('Route shared successfully! 🚗');
+      
+      // You could also copy to clipboard or share via social media
+      if (navigator.share) {
+        await navigator.share({
+          title: 'My CommuteSmart Route',
+          text: `Route from ${routeData.startPoint} to ${routeData.endPoint}`,
+          url: window.location.href
+        });
+      }
+    } catch (error) {
+      console.error('Error sharing route:', error);
+      toast.error('Failed to share route. Please try again.');
+    }
+  };
+
+  // CONNECTED TO BACKEND: Report alert handler
+  const handleReportAlert = async () => {
+    if (!routeData.startPoint || !routeData.endPoint) {
+      toast.error('Please enter both start and end points to report an alert');
+      return;
+    }
+
+    if (!routeData.startCoords || !routeData.endCoords) {
+      toast.error('Please calculate the route first to report an alert');
+      return;
+    }
+
+    // Open the report modal
+    setShowReportModal(true);
+  };
+
+  // CONNECTED TO BACKEND: Submit report from modal
+  const handleSubmitReport = async (message: string) => {
+    try {
+      if (!message.trim()) {
+        toast.error('Please enter a message for the alert');
+        return;
+      }
+
+      // Create a route-specific alert for the backend
+      const alertData = {
+        message: message.trim(),
+        location: `${routeData.startPoint} - ${routeData.endPoint}`,
+        lat: routeData.startCoords[0],
+        long: routeData.startCoords[1],
+        type: 'traffic',
+        severity: 'medium',
+        timestamp: new Date().toISOString()
+      };
+
+      console.log('🚨 Reporting route alert to backend:', alertData);
+      
+      try {
+        // Try to send to backend using existing alerts API
+        const response = await alertsAPI.createAlert(
+          alertData.message,
+          alertData.lat,
+          alertData.long,
+          alertData.type,
+          alertData.severity,
+          alertData.location
+        );
+
+        console.log('✅ Alert reported successfully to backend:', response.data);
+        toast.success('Alert reported successfully! 🚨');
+      } catch (backendError: any) {
+        console.warn('⚠️ Backend not available, using local storage fallback:', backendError);
+        
+        // Fallback to local storage if backend is not running
+        const existingAlerts = JSON.parse(localStorage.getItem('commuteSmart_alerts') || '[]');
+        const newAlert = {
+          ...alertData,
+          id: Date.now().toString(),
+          time: 'Just now',
+          user: 'You',
+          name: 'You',
+          avatar: 'YU',
+          text: alertData.message,
+          location: alertData.location,
+          lat: alertData.lat,
+          long: alertData.long
+        };
+        existingAlerts.push(newAlert);
+        localStorage.setItem('commuteSmart_alerts', JSON.stringify(existingAlerts));
+        
+        console.log('✅ Alert saved locally:', newAlert);
+        toast.success('Alert reported successfully! (Saved locally) 🚨');
+        
+        // Add to current alerts immediately for both route and community feed
+        setRouteAlerts(prev => [newAlert, ...prev]);
+        
+        // Also add to community alerts for community feed visibility
+        setCommunityAlerts(prev => [newAlert, ...prev]);
+      }
+      
+      // Close modal and clear message
+      setShowReportModal(false);
+      setReportMessage('');
+      
+      // Refresh the alerts to show the new one
+      if (routeData.startCoords && routeData.endCoords) {
+        await fetchRouteAlerts([routeData.startCoords[0], routeData.startCoords[1]]);
+      }
+      
+    } catch (error: any) {
+      console.error('❌ Error reporting alert:', error);
+      
+      // More detailed error handling
+      if (error.code === 'ECONNREFUSED') {
+        toast.error('Cannot connect to server. Alert saved locally.');
+      } else if (error.response?.status === 401) {
+        toast.error('Please login to report alerts.');
+      } else if (error.response?.data?.message) {
+        toast.error(error.response.data.message);
+      } else {
+        toast.error('Failed to report alert. Please try again.');
+      }
     }
   };
 
   const handleCalculateRoute = async () => {
-    if (!from || !to) {
+    if (!routeData.startPoint || !routeData.endPoint) {
       toast.error('Please enter both starting point and destination');
       return;
     }
-    
-    setIsGeocoding(true);
+
     setIsCalculatingRoute(true);
+    setIsGeocoding(true);
     
     try {
-      // FIXED: Robust geocoding + route calculation for Punjab cities
-      console.log(`Starting route calculation for: "${from}" → "${to}"`);
+      const startCoords = await geocodePlace(routeData.startPoint);
+      const endCoords = await geocodePlace(routeData.endPoint);
       
-      // Step 1: Convert place names to coordinates
-      const startCoords = await geocodePlace(from);
-      const endCoords = await geocodePlace(to);
-      
-      // Step 2: Validate geocoding results
       if (!startCoords || !endCoords) {
-        toast.error('Could not find location. Try more specific name like \'Sector 17 Chandigarh Punjab\'');
+        toast.error('Could not find locations. Please try different place names.');
         return;
       }
+
+      setStartPoint(routeData.startPoint, startCoords);
+      setEndPoint(routeData.endPoint, endCoords);
+
+      const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${startCoords[1]},${startCoords[0]};${endCoords[1]},${endCoords[0]}?overview=full&geometries=geojson`;
+      const response = await fetch(osrmUrl);
+      const data = await response.json();
       
-      const [startLat, startLng] = startCoords;
-      const [endLat, endLng] = endCoords;
-      
-      // Step 3: Double validate coordinates are valid numbers
-      if (isNaN(startLat) || isNaN(startLng) || isNaN(endLat) || isNaN(endLng)) {
-        toast.error('Invalid coordinates received. Please try again.');
-        return;
-      }
-      
-      console.log(`✅ Geocoded successfully - Start: [${startLat}, ${startLng}], End: [${endLat}, ${endLng}]`);
-      
-      // Step 4: Calculate center point for alerts API
-      const centerLat = (startLat + endLat) / 2;
-      const centerLng = (startLng + endLng) / 2;
-      const centerPoint: [number, number] = [centerLat, centerLng];
-      
-      console.log(`📍 Route center calculated: [${centerLat}, ${centerLng}]`);
-      
-      // FIXED: Realistic OSRM routing + auto zoom + alerts on map
-      let routeCoords: [number, number][] = [];
-      try {
-        console.log('🚀 Calling OSRM for realistic route...');
-        // Use OSRM free demo server for real road routing with steps for better visualization
-        const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${startLng},${startLat};${endLng},${endLat}?overview=full&geometries=polyline&steps=true&alternatives=false`;
-        const osrmResponse = await axios.get(osrmUrl);
+      if (data.routes && data.routes.length > 0) {
+        const route = data.routes[0];
+        const coordinates = route.geometry.coordinates.map((coord: number[]) => [coord[1], coord[0]]) as [number, number][];
         
-        if (osrmResponse.data.routes && osrmResponse.data.routes.length > 0) {
-          const route = osrmResponse.data.routes[0];
-          // Decode OSRM polyline to coordinates
-          routeCoords = decodePolyline(route.geometry);
-          console.log('✅ OSRM realistic route received with', routeCoords.length, 'points');
-          console.log('📍 Distance:', (route.distance / 1000).toFixed(1), 'km, Duration:', (route.duration / 60).toFixed(1), 'minutes');
-        } else {
-          throw new Error('No OSRM route found');
-        }
-        } catch (osrmError) {
-        console.log('⚠️ OSRM routing failed, trying backend fallback:', osrmError);
-        try {
-          // Try backend route suggestion as fallback
-          const routeResponse = await axios.post(
-            `${import.meta.env.VITE_API_URL}/api/routes/suggest`,
-            {
-              start: { latitude: startLat, longitude: startLng },
-              end: { latitude: endLat, longitude: endLng }
-            },
-            { withCredentials: true }
-          );
-          
-          if (routeResponse.data.success && routeResponse.data.path) {
-            routeCoords = routeResponse.data.path.map((point: any) => [point.latitude, point.longitude]);
-            console.log('✅ Backend route path received');
-          } else {
-            throw new Error('No path in backend response');
-          }
-        } catch (backendError) {
-          console.log('⚠️ Backend routing failed, using straight line fallback:', backendError);
-          // Final fallback to simple straight line route
-          routeCoords = [
-            [startLat, startLng],
-            [(startLat + endLat) / 2, (startLng + endLng) / 2],
-            [endLat, endLng]
-          ];
-        }
-      }
-      
-      // Step 6: Update map with route
-      const startPoint: [number, number] = [startLat, startLng];
-      const endPoint: [number, number] = [endLat, endLng];
-      
-      setRouteStart(startPoint);
-      setRouteEnd(endPoint);
-      setRoutePath(routeCoords);
-      setRouteCenter(centerPoint);
-      
-      console.log('🗺️ Map updated with route line');
-      
-      // Step 7: Fetch alerts for route area (8km radius)
-      try {
-        console.log('🔍 Fetching route alerts...');
-        await fetchRouteAlerts(centerPoint);
-        console.log('✅ Route alerts fetched successfully');
-      } catch (alertsError) {
-        console.log('⚠️ Alerts fetch failed, but route still works:', alertsError);
-        // Don't fail the entire route calculation if alerts fail
-      }
-      
-      // Step 8: Show success message only if user explicitly calculated a route
-      if (from && to) {
-        toast.success('Optimal route calculated! 🚌');
-      }
-      console.log('🎉 Route calculation completed successfully');
-      
-    } catch (error: any) {
-      console.error('❌ Route calculation failed:', error);
-      
-      // Provide specific error messages based on error type
-      if (error.code === 'ECONNREFUSED' || error.code === 'NETWORK_ERROR') {
-        toast.error('Network error. Please check your connection and try again.');
-      } else if (error.response?.status === 400) {
-        toast.error('Invalid route data. Please try different locations.');
-      } else if (error.response?.status === 500) {
-        toast.error('Server error. Please try again in a moment.');
+        setRoutePath(coordinates);
+        
+        const centerLat = (startCoords[0] + endCoords[0]) / 2;
+        const centerLng = (startCoords[1] + endCoords[1]) / 2;
+        setRouteCenter([centerLat, centerLng]);
+        
+        await fetchRouteAlerts([centerLat, centerLng]);
+        
+        toast.success('Route calculated successfully! 🎉');
       } else {
-        toast.error('Failed to calculate route. Please try again.');
+        toast.error('Could not calculate route. Please try again.');
       }
+    } catch (error) {
+      console.error('Route calculation error:', error);
+      toast.error('Failed to calculate route. Please check your network connection.');
     } finally {
-      setIsGeocoding(false);
       setIsCalculatingRoute(false);
+      setIsGeocoding(false);
     }
   };
 
-  // CONNECTED TO BACKEND: Fetch route-specific alerts
-  const fetchRouteAlerts = async (center: [number, number]) => {
-    setIsLoadingAlerts(true);
-    try {
-      // Call API with 8km radius (converted to degrees)
-      const response = await axios.get(
-        `${import.meta.env.VITE_API_URL}/api/location/nearby?lat=${center[0]}&long=${center[1]}`,
-        { withCredentials: true }
-      );
-      
-      if (response.data.success && response.data.alerts) {
-        setRouteAlerts(response.data.alerts);
-      } else {
-        setRouteAlerts([]);
-      }
-    } catch (error: any) {
-      console.error('Error fetching route alerts:', error);
-      // Fallback to empty alerts on error - no toast needed for background operation
-      setRouteAlerts([]);
-    } finally {
-      setIsLoadingAlerts(false);
-    }
+  // Helper function to calculate distance between two coordinates
+  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+    const R = 6371; // Earth's radius in km
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+              Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
   };
 
-  // CONNECTED TO BACKEND: Fetch general community feed when no route is active
-  const fetchGeneralFeed = async () => {
-    setIsLoadingAlerts(true);
-    try {
-      // Use default location (Chandigarh) for general feed
-      const response = await axios.get(
-        `${import.meta.env.VITE_API_URL}/api/location/nearby?lat=30.73&long=76.78`,
-        { withCredentials: true }
-      );
-      
-      if (response.data.success && response.data.alerts) {
-        setRouteAlerts(response.data.alerts);
-      } else {
-        setRouteAlerts([]);
-      }
-    } catch (error: any) {
-      console.error('Error fetching general feed:', error);
-      // Fallback to mock data on error
-      setRouteAlerts([]);
-    } finally {
-      setIsLoadingAlerts(false);
-    }
-  };
-
-  // Load general feed on mount
+  // STABILITY FIX: Use stable callback and simple dependency
   useEffect(() => {
-    if (!routeCenter) {
-      fetchGeneralFeed();
+    if (!hasRouteCenter) {
+      stableFetchGeneralFeed();
     }
-  }, [routeCenter]);
+  }, [hasRouteCenter, stableFetchGeneralFeed]);
+
+  // CONNECTED TO BACKEND: Listen for new community alerts
+  useEffect(() => {
+    const handleNewCommunityAlert = (event: CustomEvent) => {
+      const newAlert = event.detail;
+      console.log('📢 New community alert received:', newAlert);
+      setCommunityAlerts(prev => [newAlert, ...prev]);
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('newCommunityAlert', handleNewCommunityAlert as EventListener);
+      
+      // Load existing community alerts from localStorage
+      const existingAlerts = JSON.parse(localStorage.getItem('commuteSmart_alerts') || '[]');
+      if (existingAlerts.length > 0) {
+        setCommunityAlerts(existingAlerts);
+      }
+    }
+
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('newCommunityAlert', handleNewCommunityAlert as EventListener);
+      }
+    };
+  }, []);
 
   // CONNECTED TO BACKEND: Reset alerts when route is cleared
   const clearRoute = () => {
     setRoutePath(null);
-    setRouteStart(null);
-    setRouteEnd(null);
     setRouteCenter(null);
     setRouteAlerts([]);
   };
@@ -601,7 +726,7 @@ export function Dashboard() {
               transition={{ duration: 0.5 }}
               className="w-full h-full"
             >
-              <MapView routePath={routePath || undefined} startPoint={routeStart || undefined} endPoint={routeEnd || undefined} routeAlerts={routeAlerts} />
+              <SafeMapView routePath={routeData.routePath || undefined} startPoint={routeData.startCoords || undefined} endPoint={routeData.endCoords || undefined} routeAlerts={routeAlerts} />
             </motion.div>
           </div>
         </div>
@@ -622,18 +747,19 @@ export function Dashboard() {
                   className="w-full bg-[#122620]/50 border border-white/10 rounded-xl pl-8 pr-4 py-2.5 text-sm focus:ring-1 focus:ring-[#0fb880] focus:border-[#0fb880] outline-none transition-all text-white focus:bg-[#122620]/70" 
                   placeholder="Enter Starting Point" 
                   type="text" 
-                  value={from}
-                  onChange={(e) => setFrom(e.target.value)}
+                  value={routeData.startPoint}
+                  onChange={(e) => setStartPoint(e.target.value, routeData.startCoords || [30.73, 76.78])}
                 />
               </div>
               <div className="relative">
-                <div className="absolute left-3 top-4 w-1.5 h-1.5 rounded-full bg-red-500"></div>
+                <div className="absolute left-3 top-3.5 w-1.5 h-1.5 rounded-full bg-red-500"></div>
+                <div className="absolute left-[14px] top-6 bottom-4 w-0.5 bg-gray-700/50"></div>
                 <input 
                   className="w-full bg-[#122620]/50 border border-white/10 rounded-xl pl-8 pr-4 py-2.5 text-sm focus:ring-1 focus:ring-[#0fb880] focus:border-[#0fb880] outline-none transition-all text-white focus:bg-[#122620]/70" 
-                  placeholder="Where to go?" 
-                  type="text"
-                  value={to}
-                  onChange={(e) => setTo(e.target.value)}
+                  placeholder="Enter Ending Point" 
+                  type="text" 
+                  value={routeData.endPoint}
+                  onChange={(e) => setEndPoint(e.target.value, routeData.endCoords || [30.73, 76.78])}
                 />
               </div>
               <div className="grid grid-cols-3 gap-2 py-2">
@@ -778,8 +904,8 @@ export function Dashboard() {
           {/* Community Feed */}
           <div className="col-span-12 md:col-span-4 glass-panel rounded-2xl p-5 flex flex-col h-full overflow-hidden">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-sm font-bold text-white flex items-center gap-2 uppercase tracking-wider">
-                <span className="material-symbols-outlined text-red-400 text-xl">forum</span>
+              <h2 className="text-sm font-bold text-white mb-4 flex items-center gap-2 uppercase tracking-wider">
+                <span className="material-symbols-outlined text-[#0fb880] text-xl">forum</span>
                 {routeCenter ? 'Route Alerts' : 'Community Feed'}
               </h2>
               <div className="flex gap-2">
@@ -795,17 +921,18 @@ export function Dashboard() {
                 )}
                 {/* CONNECTED TO BACKEND: Report button with enhanced functionality */}
                 <button 
-                  onClick={handleShareLocation}
+                  onClick={handleShareRoute}
                   disabled={locationLoading}
                   className="bg-[#0fb880]/20 hover:bg-[#0fb880]/30 disabled:opacity-50 text-[#0fb880] text-[10px] font-bold px-3 py-1.5 rounded-full transition-colors flex items-center gap-1"
                 >
-                  <span className="material-symbols-outlined text-xs">location_on</span>
+                  <span className="material-symbols-outlined text-xs">share</span>
                   SHARE
                 </button>
                 <button 
-                  onClick={() => console.log('Report feature coming soon')}
+                  onClick={handleReportAlert}
                   className="bg-red-500/20 hover:bg-red-500/30 text-red-400 text-[10px] font-bold px-3 py-1.5 rounded-full transition-colors"
                 >
+                  <span className="material-symbols-outlined text-xs">report</span>
                   REPORT +
                 </button>
               </div>
@@ -840,11 +967,16 @@ export function Dashboard() {
                               <div className="w-6 h-6 rounded-full bg-orange-500/20 flex items-center justify-center text-[8px] font-black text-orange-400 border border-orange-500/20 uppercase">
                                 ⚠️
                               </div>
-                              <span className="text-xs font-bold text-white">Route Alert</span>
+                              <span className="text-xs font-bold text-white">
+                                {alert.user === 'You' ? 'Your Report' : 'Route Alert'}
+                              </span>
                             </div>
                             <span className="text-[10px] text-gray-500">{alert.time || 'Just now'}</span>
                           </div>
                           <p className="text-xs text-gray-300">{alert.message || alert.text || 'Alert on your route'}</p>
+                          {alert.location && alert.user === 'You' && (
+                            <p className="text-xs text-orange-400 mt-1">📍 {alert.location}</p>
+                          )}
                         </motion.div>
                       ))
                     ) : (
@@ -861,19 +993,28 @@ export function Dashboard() {
                     )
                   ) : (
                     // Show default community feed when no route is selected
-                    punjabReports.map((report, index) => (
+                    // Combine user reports with default reports
+                    [...communityAlerts, ...punjabReports].map((report, index) => (
                       <motion.div
-                        key={index}
+                        key={report.id || index}
                         initial={{ opacity: 0, x: -20 }}
                         animate={{ opacity: 1, x: 0 }}
                         exit={{ opacity: 0, x: 20 }}
                         transition={{ delay: index * 0.1, duration: 0.3 }}
-                        className="p-3 bg-white/5 rounded-xl border border-white/5 hover:border-[#0fb880]/20 transition-all cursor-pointer group"
-                        whileHover={{ scale: 1.02, backgroundColor: 'rgba(255,255,255,0.08)' }}
+                        className={`p-3 rounded-xl border transition-all cursor-pointer group ${
+                          report.user === 'You' 
+                            ? 'bg-orange-500/10 border-orange-500/20 hover:border-orange-500/40' 
+                            : 'bg-white/5 border-white/5 hover:border-[#0fb880]/20'
+                        }`}
+                        whileHover={{ scale: 1.02, backgroundColor: report.user === 'You' ? 'rgba(251, 146, 60, 0.15)' : 'rgba(255,255,255,0.08)' }}
                       >
                         <div className="flex justify-between items-start mb-1">
                           <div className="flex items-center gap-2">
-                            {report.isSystem ? (
+                            {report.user === 'You' ? (
+                              <div className="w-6 h-6 rounded-full bg-orange-500/20 flex items-center justify-center text-[8px] font-black text-orange-400 border border-orange-500/20 uppercase">
+                                ⚠️
+                              </div>
+                            ) : report.isSystem ? (
                               <div className="w-6 h-6 rounded-full bg-[#0fb880]/20 flex items-center justify-center text-[8px] font-black text-[#0fb880] border border-[#0fb880]/20 uppercase">
                                 {report.avatar}
                               </div>
@@ -882,11 +1023,16 @@ export function Dashboard() {
                                 {report.avatar}
                               </div>
                             )}
-                            <span className="text-xs font-bold text-white">{report.name}</span>
+                            <span className="text-xs font-bold text-white">
+                              {report.user === 'You' ? 'Your Report' : report.name}
+                            </span>
                           </div>
-                          <span className="text-[10px] text-gray-500">{report.time}</span>
+                          <span className="text-[10px] text-gray-500">{report.time || 'Just now'}</span>
                         </div>
-                        <p className="text-xs text-gray-300">{report.text}</p>
+                        <p className="text-xs text-gray-300">{report.text || report.message}</p>
+                        {report.location && report.user === 'You' && (
+                          <p className="text-xs text-orange-400 mt-1">📍 {report.location}</p>
+                        )}
                       </motion.div>
                     ))
                   )}
@@ -909,6 +1055,116 @@ export function Dashboard() {
           </div>
         </div>
       </div>
+
+      {/* CONNECTED TO BACKEND: Report Alert Modal */}
+      <AnimatePresence>
+        {showReportModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+            onClick={() => setShowReportModal(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              transition={{ type: "spring", damping: 20, stiffness: 300 }}
+              className="bg-[#0a1411] border border-white/10 rounded-2xl p-6 max-w-md w-full"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                  <span className="material-symbols-outlined text-[#0fb880]">report</span>
+                  Report Alert
+                </h3>
+                <button
+                  onClick={() => setShowReportModal(false)}
+                  className="text-gray-400 hover:text-white transition-colors"
+                >
+                  <span className="material-symbols-outlined">close</span>
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="text-xs text-gray-400 font-medium uppercase tracking-wider mb-2 block">
+                    Route Details
+                  </label>
+                  <div className="bg-[#122620]/50 border border-white/10 rounded-xl px-3 py-2 text-sm text-gray-300">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="w-2 h-2 rounded-full bg-[#0fb880]"></span>
+                      <span>From: {routeData.startPoint}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-red-500"></span>
+                      <span>To: {routeData.endPoint}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs text-gray-400 font-medium uppercase tracking-wider mb-2 block">
+                    Alert Message
+                  </label>
+                  <textarea
+                    value={reportMessage}
+                    onChange={(e) => setReportMessage(e.target.value)}
+                    placeholder="Describe the traffic issue, road condition, or any alert..."
+                    className="w-full bg-[#122620]/50 border border-white/10 rounded-xl px-3 py-2 text-sm focus:ring-1 focus:ring-[#0fb880] focus:border-[#0fb880] outline-none transition-all text-white focus:bg-[#122620]/70 resize-none"
+                    rows={3}
+                    maxLength={200}
+                  />
+                  <div className="flex justify-between items-center mt-1">
+                    <span className="text-xs text-gray-500">
+                      {reportMessage.length}/200 characters
+                    </span>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs text-gray-400 font-medium uppercase tracking-wider mb-2 block">
+                    Alert Type
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      { id: 'traffic', label: 'Traffic', icon: 'traffic' },
+                      { id: 'accident', label: 'Accident', icon: 'crash_alert' },
+                      { id: 'construction', label: 'Construction', icon: 'construction' },
+                      { id: 'weather', label: 'Weather', icon: 'thunderstorm' }
+                    ].map((type) => (
+                      <button
+                        key={type.id}
+                        className="bg-[#122620]/50 border border-white/10 rounded-xl px-3 py-2 text-sm text-gray-300 hover:border-[#0fb880]/50 hover:text-[#0fb880] transition-all flex items-center gap-2"
+                      >
+                        <span className="material-symbols-outlined text-xs">{type.icon}</span>
+                        {type.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  <button
+                    onClick={() => setShowReportModal(false)}
+                    className="flex-1 bg-gray-500/20 hover:bg-gray-500/30 text-gray-400 font-medium py-2 rounded-xl transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => handleSubmitReport(reportMessage)}
+                    disabled={!reportMessage.trim()}
+                    className="flex-1 bg-[#0fb880] hover:bg-[#0fb880]/90 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-medium py-2 rounded-xl transition-colors"
+                  >
+                    Report Alert
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

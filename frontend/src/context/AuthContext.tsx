@@ -1,8 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import axios from 'axios';
-
-// CONNECTED TO BACKEND: Set global axios default for cookie handling
-axios.defaults.withCredentials = true;
+import { authAPI } from '../lib/api';
+import toast from 'react-hot-toast';
 
 interface User {
   id: string;
@@ -71,9 +69,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Check authentication status with backend
   const checkAuth = async () => {
     try {
-      const response = await axios.get(`${import.meta.env.VITE_API_URL}/api/auth/me`, {
-        withCredentials: true
-      });
+      const response = await authAPI.me();
       
       if (response.data.success && response.data.user) {
         setUser(response.data.user);
@@ -92,9 +88,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Verify auth with backend without clearing localStorage on failure
   const verifyAuthWithBackend = async () => {
     try {
-      const response = await axios.get(`${import.meta.env.VITE_API_URL}/api/auth/me`, {
-        withCredentials: true
-      });
+      const response = await authAPI.me();
       
       if (response.data.success && response.data.user) {
         setUser(response.data.user);
@@ -118,12 +112,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = useCallback(async (email: string, password: string) => {
     try {
-      const response = await axios.post(`${import.meta.env.VITE_API_URL}/api/auth/login`, {
-        email,
-        password
-      }, {
-        withCredentials: true
-      });
+      const response = await authAPI.login(email, password);
       
       if (response.data.success && response.data.user) {
         setUser(response.data.user);
@@ -136,6 +125,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         } catch (storageError) {
           console.error('Failed to store user data in localStorage:', storageError);
         }
+        toast.success('Login successful! 🎉');
       }
     } catch (error: any) {
       const errorMessage = error.response?.data?.message || 'Login failed';
@@ -145,12 +135,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const register = useCallback(async (email: string, password: string) => {
     try {
-      const response = await axios.post(`${import.meta.env.VITE_API_URL}/api/auth/signup`, {
-        email,
-        password
-      }, {
-        withCredentials: true
-      });
+      const response = await authAPI.register(email, password);
       
       if (response.data.success && response.data.user) {
         setUser(response.data.user);
@@ -163,6 +148,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         } catch (storageError) {
           console.error('Failed to store user data in localStorage:', storageError);
         }
+        toast.success('Registration successful! 🎉');
       }
     } catch (error: any) {
       const errorMessage = error.response?.data?.message || 'Registration failed';
@@ -172,9 +158,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = useCallback(async () => {
     try {
-      await axios.post(`${import.meta.env.VITE_API_URL}/api/auth/logout`, {}, {
-        withCredentials: true
-      });
+      await authAPI.logout();
     } catch (error) {
       console.error('Logout API failed:', error);
     } finally {
@@ -188,6 +172,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } catch (storageError) {
         console.error('Failed to clear localStorage:', storageError);
       }
+      toast.success('Logged out successfully');
     }
   }, []);
 

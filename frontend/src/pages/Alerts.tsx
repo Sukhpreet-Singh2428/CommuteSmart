@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
+import { alertsAPI, getSocketUrl } from '../lib/api';
+import { io, Socket } from 'socket.io-client';
 
 const punjabAlerts = [
   {
@@ -88,6 +90,46 @@ const topContributors = [
   { name: 'Harpreet S.', reports: 85, xp: '+180 XP', rank: 3, avatar: 'HS' },
 ];
 
+// Helper functions for alert display
+const getAlertIcon = (type: string) => {
+  const iconMap: { [key: string]: string } = {
+    'traffic': 'traffic',
+    'delay': 'schedule',
+    'accident': 'warning',
+    'info': 'info',
+    'clear': 'verified',
+    'default': 'notifications'
+  };
+  return iconMap[type] || iconMap.default;
+};
+
+const getAlertIconColor = (type: string) => {
+  const colorMap: { [key: string]: string } = {
+    'traffic': 'text-red-500',
+    'delay': 'text-yellow-500',
+    'accident': 'text-orange-500',
+    'info': 'text-[#0fb880]',
+    'clear': 'text-[#0fb880]',
+    'default': 'text-gray-400'
+  };
+  return colorMap[type] || colorMap.default;
+};
+
+const formatTimeAgo = (createdAt: string) => {
+  const now = new Date();
+  const alertTime = new Date(createdAt);
+  const diffMinutes = Math.floor((now.getTime() - alertTime.getTime()) / (1000 * 60));
+  
+  if (diffMinutes < 1) return 'Just now';
+  if (diffMinutes < 60) return `${diffMinutes}m ago`;
+  
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+  
+  const diffDays = Math.floor(diffHours / 24);
+  return `${diffDays}d ago`;
+};
+
 const filterOptions = [
   { id: 'all', label: 'All Updates', icon: 'dynamic_feed' },
   { id: 'verified', label: 'Verified', icon: 'verified', count: 12 },
@@ -97,42 +139,139 @@ const filterOptions = [
 
 export function Alerts() {
   const [filter, setFilter] = useState<'all' | 'verified' | 'nearby' | 'recent'>('all');
-  const { } = useAuth();
+  const { user } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
-  const [alerts, setAlerts] = useState(punjabAlerts);
-  const [upvotedAlerts, setUpvotedAlerts] = useState<Set<number>>(new Set([2, 5]));
+  const [alerts, setAlerts] = useState<any[]>([]);
+  const [upvotedAlerts, setUpvotedAlerts] = useState<Set<string>>(new Set());
+  const [socket, setSocket] = useState<Socket | null>(null);
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [newAlert, setNewAlert] = useState({ message: '', lat: 30.73, long: 76.78 }); // Default Chandigarh
 
-  // POLISHED: Simulate loading and add interactions
+  // CONNECTED TO BACKEND: Initialize Socket.io for real-time alerts
   useEffect(() => {
-    const timer = setTimeout(() => setIsLoading(false), 800);
-    return () => clearTimeout(timer);
+    let newSocket: Socket | null = null;
+    
+    try {
+      newSocket = io(getSocketUrl(), {
+        withCredentials: true,
+        transports: ['websocket', 'polling']
+      });
+
+      newSocket.on('connect', () => {
+        console.log('Connected to alerts Socket.io server');
+      });
+
+      newSocket.on('disconnect', () => {
+        console.log('Disconnected from alerts Socket.io server');
+      });
+
+      // CONNECTED TO BACKEND: Listen for new alerts
+      newSocket.on('newAlert', (alert: any) => {
+        console.log('Received new alert:', alert);
+        setAlerts(prev => {
+          // Prevent duplicates
+          const exists = prev.some(existing => existing._id === alert._id);
+          if (!exists) {
+            toast.success('New alert reported! 🚨');
+            return [alert, ...prev];
+          }
+          return prev;
+        });
+      });
+
+      setSocket(newSocket);
+    } catch (error) {
+      console.error('Failed to initialize socket:', error);
+    }
+
+    return () => {
+      if (newSocket) {
+        newSocket.close();
+      }
+    };
   }, []);
 
-  const handleUpvote = (alertId: number) => {
-    setUpvotedAlerts(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(alertId)) {
-        newSet.delete(alertId);
-        toast.success('Removed upvote');
-      } else {
-        newSet.add(alertId);
-        toast.success('Added upvote! 👍');
+  // CONNECTED TO BACKEND: Fetch alerts from API
+  const fetchAlerts = async () => {
+    setIsLoading(true);
+    try {
+      const response = await alertsAPI.getAlerts();
+      if (response.data.success && response.data.alerts) {
+        setAlerts(response.data.alerts);
       }
-      return newSet;
-    });
+    } catch (error: any) {
+      console.error('Error fetching alerts:', error);
+      toast.error('Failed to fetch alerts');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-    // Update alert upvote count
-    setAlerts(prev => prev.map(alert => 
-      alert.id === alertId 
-        ? { ...alert, upvotes: upvotedAlerts.has(alertId) ? alert.upvotes - 1 : alert.upvotes + 1 }
-        : alert
-    ));
+  // Load alerts on mount
+  useEffect(() => {
+    fetchAlerts();
+  }, []);
+
+  // CONNECTED TO BACKEND: Handle upvote with API call
+  const handleUpvote = async (alertId: string) => {
+    try {
+      await alertsAPI.upvoteAlert(alertId);
+      
+      setUpvotedAlerts(prev => {
+        const newSet = new Set(prev);
+        if (newSet.has(alertId)) {
+          newSet.delete(alertId);
+          toast.success('Removed upvote');
+        } else {
+          newSet.add(alertId);
+          toast.success('Added upvote! 👍');
+        }
+        return newSet;
+      });
+
+      // Update alert upvote count locally
+      setAlerts(prev => prev.map(alert => 
+        alert._id === alertId 
+          ? { ...alert, upvotes: upvotedAlerts.has(alertId) ? alert.upvotes - 1 : alert.upvotes + 1 }
+          : alert
+      ));
+    } catch (error: any) {
+      console.error('Error upvoting alert:', error);
+      toast.error('Failed to upvote alert');
+    }
+  };
+
+  // CONNECTED TO BACKEND: Handle new alert submission
+  const handleReportAlert = async () => {
+    if (!newAlert.message.trim()) {
+      toast.error('Please enter an alert message');
+      return;
+    }
+
+    try {
+      const response = await alertsAPI.createAlert(newAlert.message, newAlert.lat, newAlert.long);
+      if (response.data.success) {
+        toast.success('Alert reported successfully! 🎉');
+        setShowReportModal(false);
+        setNewAlert({ message: '', lat: 30.73, long: 76.78 });
+        fetchAlerts(); // Refresh alerts
+      }
+    } catch (error: any) {
+      console.error('Error creating alert:', error);
+      toast.error('Failed to report alert');
+    }
   };
 
   const filteredAlerts = alerts.filter(alert => {
     if (filter === 'verified') return alert.verified;
-    if (filter === 'nearby') return alert.location.includes('Chandigarh') || alert.location.includes('Sector');
-    if (filter === 'recent') return parseInt(alert.timeAgo) <= 30; // Recent alerts (30 mins or less)
+    if (filter === 'nearby') return alert.location && (alert.location.includes('Chandigarh') || alert.location.includes('Sector'));
+    if (filter === 'recent') {
+      // Calculate if alert is recent (within 30 minutes)
+      const alertTime = new Date(alert.createdAt);
+      const now = new Date();
+      const diffMinutes = (now.getTime() - alertTime.getTime()) / (1000 * 60);
+      return diffMinutes <= 30;
+    }
     return true;
   });
 
@@ -154,11 +293,11 @@ export function Alerts() {
         <div className="flex items-center gap-4">
           <div className="flex flex-col items-end">
             <span className="text-[10px] text-gray-400 font-medium uppercase tracking-wider">Punjab Eco-Rank</span>
-            <span className="text-sm font-bold text-[#0fb880]">#142 Chandigarh</span>
+            <span className="text-sm font-bold text-[#0fb880]">#{user?.points || 142} Chandigarh</span>
           </div>
           <div className="h-9 w-9 rounded-full border-2 border-[#0fb880]/30 p-0.5">
             <div className="w-full h-full rounded-full bg-[#0fb880]/30 flex items-center justify-center text-white font-bold text-sm">
-              U
+              {user?.email?.charAt(0).toUpperCase() || 'U'}
             </div>
           </div>
         </div>
@@ -267,7 +406,7 @@ export function Alerts() {
                 Community Feed
               </h2>
               <button 
-                onClick={() => toast.success('Report feature coming soon!')}
+                onClick={() => setShowReportModal(true)}
                 className="bg-[#0fb880]/20 hover:bg-[#0fb880]/30 text-[#0fb880] text-[10px] font-bold px-3 py-1.5 rounded-full transition-all hover:scale-105 active:scale-95"
               >
                 REPORT +
@@ -357,7 +496,7 @@ export function Alerts() {
                 >
                   {filteredAlerts.map((alert, index) => (
                     <motion.div
-                      key={alert.id}
+                      key={alert._id}
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -20 }}
@@ -368,7 +507,7 @@ export function Alerts() {
                 <div className="flex gap-4">
                   <div className="flex-shrink-0">
                     <div className={`w-12 h-12 rounded-lg bg-white/10 flex items-center justify-center border border-white/20`}>
-                      <span className={`material-symbols-outlined ${alert.iconColor}`}>{alert.icon}</span>
+                      <span className={`material-symbols-outlined ${getAlertIconColor(alert.type)}`}>{getAlertIcon(alert.type)}</span>
                     </div>
                   </div>
                   <div className="flex-1">
@@ -380,41 +519,30 @@ export function Alerts() {
                             <span className="bg-[#0fb880]/20 text-[#0fb880] text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wide border border-[#0fb880]/20">Verified</span>
                           )}
                         </div>
-                        <p className="text-gray-400 text-sm mb-2">{alert.description}</p>
+                        <p className="text-gray-400 text-sm mb-2">{alert.message}</p>
                         <div className="flex items-center gap-2 text-xs text-gray-500">
                           <span className="material-symbols-outlined text-sm">location_on</span>
                           {alert.location}
                         </div>
                       </div>
-                      <span className="text-xs text-gray-500 whitespace-nowrap ml-4">{alert.timeAgo}</span>
+                      <span className="text-xs text-gray-500 whitespace-nowrap ml-4">{formatTimeAgo(alert.createdAt)}</span>
                     </div>
                     
                     <div className="flex items-center justify-between mt-3 pt-3 border-t border-white/10">
                       <div className="flex items-center gap-2">
-                        {alert.isSystem ? (
-                          <>
-                            <div className="w-6 h-6 rounded-full bg-[#0fb880]/20 flex items-center justify-center text-[8px] font-black text-[#0fb880] border border-[#0fb880]/20 uppercase">
-                              {alert.avatar}
-                            </div>
-                            <span className="text-xs text-gray-400">System Update</span>
-                          </>
-                        ) : (
-                          <>
-                            <div className="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center text-white text-[10px] font-bold border border-white/20">
-                              {alert.avatar}
-                            </div>
-                            <span className="text-xs text-gray-400">Reported by {alert.reporter}</span>
-                          </>
-                        )}
+                        <div className="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center text-white text-[10px] font-bold border border-white/20">
+                          {alert.reporter?.email?.charAt(0).toUpperCase() || 'A'}
+                        </div>
+                        <span className="text-xs text-gray-400">Reported by {alert.reporter?.email || 'Anonymous'}</span>
                       </div>
                       <div className="flex items-center gap-4">
                         <button 
                           onClick={(e) => {
                             e.stopPropagation();
-                            handleUpvote(alert.id);
+                            handleUpvote(alert._id);
                           }}
                           className={`flex items-center gap-1.5 transition-colors ${
-                            upvotedAlerts.has(alert.id) ? 'text-[#0fb880]' : 'text-gray-400 hover:text-[#0fb880]'
+                            upvotedAlerts.has(alert._id) ? 'text-[#0fb880]' : 'text-gray-400 hover:text-[#0fb880]'
                           } group`}
                         >
                           <motion.span 
@@ -422,9 +550,9 @@ export function Alerts() {
                             whileHover={{ scale: 1.2 }}
                             whileTap={{ scale: 0.8 }}
                           >
-                            {upvotedAlerts.has(alert.id) ? 'favorite' : 'favorite_border'}
+                            {upvotedAlerts.has(alert._id) ? 'favorite' : 'favorite_border'}
                           </motion.span>
-                          <span className="text-xs font-medium">{alert.upvotes}</span>
+                          <span className="text-xs font-medium">{alert.upvotes || 0}</span>
                         </button>
                         <button className="flex items-center gap-1.5 text-gray-400 hover:text-white transition-colors group">
                           <motion.span 
@@ -434,7 +562,7 @@ export function Alerts() {
                           >
                             chat_bubble_outline
                           </motion.span>
-                          <span className="text-xs font-medium">{alert.comments ?? 0}</span>
+                          <span className="text-xs font-medium">{alert.comments || 0}</span>
                         </button>
                         <button className="flex items-center gap-1.5 text-gray-400 hover:text-white transition-colors group">
                           <motion.span 
@@ -538,6 +666,81 @@ export function Alerts() {
           </div>
         </div>
       </div>
+
+      {/* CONNECTED TO BACKEND: Report Alert Modal */}
+      <AnimatePresence>
+        {showReportModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+            onClick={() => setShowReportModal(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-[#0a1411] border border-white/10 rounded-2xl p-6 max-w-md w-full"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 className="text-xl font-bold text-white mb-4">Report Alert</h3>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Alert Message
+                  </label>
+                  <textarea
+                    value={newAlert.message}
+                    onChange={(e) => setNewAlert({ ...newAlert, message: e.target.value })}
+                    className="w-full bg-[#122620]/50 border border-white/10 rounded-xl px-4 py-3 text-sm focus:ring-1 focus:ring-[#0fb880] focus:border-[#0fb880] outline-none transition-all text-white focus:bg-[#122620]/70 resize-none"
+                    rows={4}
+                    placeholder="Describe the traffic condition, delay, or incident..."
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Location (Chandigarh area)
+                  </label>
+                  <select
+                    value={`${newAlert.lat},${newAlert.long}`}
+                    onChange={(e) => {
+                      const [lat, long] = e.target.value.split(',').map(Number);
+                      setNewAlert({ ...newAlert, lat, long });
+                    }}
+                    className="w-full bg-[#122620]/50 border border-white/10 rounded-xl px-4 py-3 text-sm focus:ring-1 focus:ring-[#0fb880] focus:border-[#0fb880] outline-none transition-all text-white focus:bg-[#122620]/70"
+                  >
+                    <option value="30.74,76.78">Sector 17, Chandigarh</option>
+                    <option value="30.73,76.79">Sector 22, Chandigarh</option>
+                    <option value="30.69,76.78">Sector 34, Chandigarh</option>
+                    <option value="30.71,76.71">Mohali</option>
+                    <option value="30.65,76.81">Zirakpur</option>
+                    <option value="30.38,76.78">Ambala</option>
+                    <option value="30.34,76.39">Patiala</option>
+                  </select>
+                </div>
+              </div>
+              
+              <div className="flex gap-3 mt-6">
+                <button
+                  onClick={() => setShowReportModal(false)}
+                  className="flex-1 bg-white/10 hover:bg-white/20 text-white font-medium py-3 rounded-xl transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleReportAlert}
+                  className="flex-1 bg-[#0fb880] hover:bg-[#0fb880]/90 text-white font-medium py-3 rounded-xl transition-all"
+                >
+                  Report Alert
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

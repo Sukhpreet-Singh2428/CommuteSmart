@@ -1,6 +1,8 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider } from './context/AuthContext';
+import { RouteProvider } from './context/RouteContext';
+import { ProtectedRoute } from './components/ProtectedRoute';
 import { Landing } from './pages/Landing';
 import { Login } from './pages/Login';
 import { Register } from './pages/Register';
@@ -38,25 +40,31 @@ function AppRoutes() {
       <Route
         path="/dashboard"
         element={
-          <AnimatedLayout>
-            <Dashboard />
-          </AnimatedLayout>
+          <ProtectedRoute>
+            <AnimatedLayout>
+              <Dashboard />
+            </AnimatedLayout>
+          </ProtectedRoute>
         }
       />
       <Route
         path="/alerts"
         element={
-          <AnimatedLayout>
-            <Alerts />
-          </AnimatedLayout>
+          <ProtectedRoute>
+            <AnimatedLayout>
+              <Alerts />
+            </AnimatedLayout>
+          </ProtectedRoute>
         }
       />
       <Route
         path="/profile"
         element={
-          <AnimatedLayout>
-            <Profile />
-          </AnimatedLayout>
+          <ProtectedRoute>
+            <AnimatedLayout>
+              <Profile />
+            </AnimatedLayout>
+          </ProtectedRoute>
         }
       />
     </Routes>
@@ -66,17 +74,19 @@ function AppRoutes() {
 export default function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
-        <AnimatePresence mode="wait">
-          <AppRoutes />
-        </AnimatePresence>
-        <Toaster
-          position="top-center"
-          toastOptions={{
-            style: { background: 'rgba(15, 23, 42, 0.9)', color: '#fff', border: '1px solid rgba(255,255,255,0.1)' },
-          }}
-        />
-      </BrowserRouter>
+      <RouteProvider>
+        <BrowserRouter>
+          <AnimatePresence mode="wait">
+            <AppRoutes />
+          </AnimatePresence>
+          <Toaster
+            position="top-center"
+            toastOptions={{
+              style: { background: 'rgba(15, 23, 42, 0.9)', color: '#fff', border: '1px solid rgba(255,255,255,0.1)' },
+            }}
+          />
+        </BrowserRouter>
+      </RouteProvider>
     </AuthProvider>
   );
 }

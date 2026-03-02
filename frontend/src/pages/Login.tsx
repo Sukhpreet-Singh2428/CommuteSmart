@@ -21,10 +21,10 @@ export function Login() {
       setShowConfetti(true);
       toast.success('Welcome back!');
       setTimeout(() => setShowConfetti(false), 2500);
-      // CONNECTED TO BACKEND: Redirect to dashboard on successful login
+      // Navigate to dashboard on successful login
       navigate('/dashboard');
     } catch (error: any) {
-      // CONNECTED TO BACKEND: Show specific backend error message
+      // Show specific backend error message
       const errorMessage = error.message || 'Login failed';
       toast.error(errorMessage);
     } finally {
