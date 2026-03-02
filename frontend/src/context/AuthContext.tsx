@@ -49,11 +49,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         } catch (clearError) {
           console.error('Failed to clear localStorage:', clearError);
         }
+      } finally {
+        setIsLoading(false);
       }
     };
 
     loadUserFromStorage();
-    // Only check auth if we don't have user data in localStorage
+  }, []);
+
+  // Check authentication status with backend if we don't have user data in localStorage
+  useEffect(() => {
     const storedUser = typeof window !== 'undefined' && window.localStorage ? 
       localStorage.getItem('commuteSmart_user') : null;
     

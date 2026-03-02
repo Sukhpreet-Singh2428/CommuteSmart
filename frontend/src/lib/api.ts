@@ -1,5 +1,6 @@
 // CONNECTED TO BACKEND: API service utility with environment-based URL configuration
 import axios from 'axios';
+import toast from 'react-hot-toast';
 
 // Get backend URL from environment variables
 const getBackendUrl = () => {
@@ -52,13 +53,38 @@ api.interceptors.response.use(
     // Handle specific error cases
     if (error.response?.status === 401) {
       // Unauthorized - clear auth and redirect to login
+      console.warn('User not authorized, clearing auth data');
       localStorage.removeItem('commuteSmart_user');
-      window.location.href = '/login';
+      
+      // Prevent infinite redirect loops
+      if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+        console.log('Redirecting to login page...');
+        // Use a small delay to prevent immediate redirect loops
+        setTimeout(() => {
+          window.location.href = '/login';
+        }, 100);
+      }
     } else if (error.response?.status === 403) {
       // Forbidden
       console.error('Access forbidden');
-    } else if (error.code === 'ECONNREFUSED' || error.code === 'NETWORK_ERROR') {
+      toast.error('Access forbidden. You do not have permission to access this resource.');
+    } else if (error.response?.status === 404) {
+      // Not found
+      console.error('Resource not found');
+      toast.error('The requested resource was not found.');
+    } else if (error.response?.status >= 500) {
+      // Server error
+      console.error('Server error:', error.response?.data?.message || 'Internal server error');
+      toast.error('Server error. Please try again later.');
+    } else if (error.code === 'ECONNREFUSED' || error.code === 'ERR_NETWORK') {
+      // Network error
       console.error('Network connection failed');
+      toast.error('Cannot connect to server. Please check your internet connection.');
+    } else {
+      // Generic error
+      const errorMessage = error.response?.data?.message || error.message || 'An error occurred';
+      console.error('Generic error:', errorMessage);
+      toast.error(errorMessage);
     }
     
     return Promise.reject(error);
