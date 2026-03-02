@@ -26,6 +26,14 @@ exports.signup = async (req, res) => {
             domain: process.env.NODE_ENV === 'production' ? '.onrender.com' : undefined
         });
 
+        console.log('🍪 Signup cookie set:', {
+            token: token.substring(0, 20) + '...',
+            NODE_ENV: process.env.NODE_ENV,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
+            domain: process.env.NODE_ENV === 'production' ? '.onrender.com' : undefined
+        });
+
         res.status(201).json({
             success: true,
             message: "Signup successful",

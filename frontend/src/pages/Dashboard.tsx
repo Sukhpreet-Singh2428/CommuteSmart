@@ -150,14 +150,15 @@ export function Dashboard() {
           });
           
           console.log('🔍 Filtered nearby alerts:', nearbyAlerts);
-          console.log('📊 Final counts:', {
-            totalAlerts: response.data.alerts.length,
-            nearbyAlerts: nearbyAlerts.length,
-            routeCenter: center
+          console.log('📊 Alerts found:', {
+            count: response.data.alerts.length,
+            alerts: response.data.alerts
           });
           
-          // If no alerts found within radius, show all alerts instead of empty
-          if (nearbyAlerts.length === 0) {
+          // If no alerts in database, use mock data for now
+          if (response.data.alerts.length === 0) {
+            console.log('🔄 No alerts in database, using mock data');
+            setRouteAlerts(punjabReports.slice(0, 3)); // Show first 3 mock reports
             console.log('🔄 No alerts within 50km, showing all alerts');
             setRouteAlerts(allAlerts);
           } else {

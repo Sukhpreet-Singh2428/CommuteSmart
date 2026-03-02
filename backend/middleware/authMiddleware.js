@@ -7,10 +7,12 @@ const protect = (req, res, next) => {
         cookies: req.cookies,
         token: token,
         origin: req.headers.origin,
-        NODE_ENV: process.env.NODE_ENV
+        NODE_ENV: process.env.NODE_ENV,
+        cookieHeader: req.headers.cookie
     });
 
     if(!token){
+        console.log(' No token found, redirecting to login');
         return res.status(401).json({success: false, message: "Not authorized"});
     }
 
