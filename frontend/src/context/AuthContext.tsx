@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 interface User {
   id: string;
   email: string;
+  name?: string;
   points: number;
   carbonSaved: number;
   badges: string[];
