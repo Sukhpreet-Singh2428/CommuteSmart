@@ -145,7 +145,14 @@ export function Alerts() {
   const [upvotedAlerts, setUpvotedAlerts] = useState<Set<string>>(new Set());
   const [socket, setSocket] = useState<Socket | null>(null);
   const [showReportModal, setShowReportModal] = useState(false);
-  const [newAlert, setNewAlert] = useState({ message: '', lat: 30.73, long: 76.78 }); // Default Chandigarh
+  const [newAlert, setNewAlert] = useState({ 
+    message: '', 
+    lat: 30.73, 
+    long: 76.78, 
+    type: 'traffic',
+    severity: 'medium',
+    location: ''
+  }); // Default Chandigarh
 
   // CONNECTED TO BACKEND: Initialize Socket.io for real-time alerts
   useEffect(() => {
@@ -154,32 +161,34 @@ export function Alerts() {
     try {
       newSocket = io(getSocketUrl(), {
         withCredentials: true,
-        transports: ['websocket', 'polling'],
+        transports: ['polling'], // Start with polling to avoid WebSocket issues
         timeout: 10000,
         reconnection: true,
         reconnectionAttempts: 3,
-        reconnectionDelay: 1000
+        reconnectionDelay: 1000,
+        forceNew: true
       });
 
       newSocket.on('connect', () => {
-        // Connected successfully
+        console.log('🔌 Socket connected for real-time alerts');
       });
 
-      newSocket.on('connect_error', () => {
-        // Connection error - continue without socket
+      newSocket.on('connect_error', (error) => {
+        console.log('⚠️ Socket connection failed, continuing without real-time updates:', error.message);
       });
 
-      newSocket.on('disconnect', () => {
-        // Disconnected gracefully
+      newSocket.on('disconnect', (reason) => {
+        console.log('🔌 Socket disconnected:', reason);
       });
 
       // CONNECTED TO BACKEND: Listen for new alerts
       newSocket.on('newAlert', (alert: any) => {
         setAlerts(prev => {
           // Prevent duplicates
-          const exists = prev.some(existing => existing._id === alert._id);
+          const alertId = alert._id || alert.id;
+          const exists = prev.some(existing => (existing._id || existing.id) === alertId);
           if (!exists) {
-            toast.success('New alert reported! 🚨');
+            // New alert detected silently (no toast for auto-triggered events)
             return [alert, ...prev];
           }
           return prev;
@@ -188,7 +197,7 @@ export function Alerts() {
 
       setSocket(newSocket);
     } catch (error) {
-      // Failed to initialize socket, continue without it
+      console.log('⚠️ Failed to initialize socket, continuing without real-time updates:', error);
     }
 
     return () => {
@@ -240,6 +249,22 @@ export function Alerts() {
     fetchAlerts();
   }, []);
 
+  // CONNECTED TO BACKEND: Enhanced filter with user ownership check
+  const filteredAlerts = alerts.filter(alert => {
+    if (!alert) return false;
+    
+    if (filter === 'verified') return alert.verified === true;
+    if (filter === 'nearby') return alert.location && (alert.location.includes('Chandigarh') || alert.location.includes('Sector'));
+    if (filter === 'recent') {
+      // Calculate if alert is recent (within 30 minutes)
+      const alertTime = new Date(alert.createdAt || alert.timeAgo || Date.now());
+      const now = new Date();
+      const diffMinutes = (now.getTime() - alertTime.getTime()) / (1000 * 60);
+      return diffMinutes <= 30;
+    }
+    return true;
+  });
+
   // CONNECTED TO BACKEND: Handle upvote with API call
   const handleUpvote = async (alertId: string) => {
     try {
@@ -249,10 +274,10 @@ export function Alerts() {
         const newSet = new Set(prev);
         if (newSet.has(alertId)) {
           newSet.delete(alertId);
-          toast.success('Removed upvote');
+          // Upvote removed silently (no toast for minor actions)
         } else {
           newSet.add(alertId);
-          toast.success('Added upvote! 👍');
+          // Upvote added silently (no toast for minor actions)
         }
         return newSet;
       });
@@ -269,6 +294,25 @@ export function Alerts() {
     }
   };
 
+  // CONNECTED TO BACKEND: Handle delete own alert
+  const handleDeleteAlert = async (alertId: string) => {
+    try {
+      await alertsAPI.deleteAlert(alertId);
+      
+      setAlerts(prev => prev.filter(alert => alert._id !== alertId));
+      toast.success('Alert deleted successfully! 🗑️');
+    } catch (error: any) {
+      console.error('Error deleting alert:', error);
+      if (error.response?.status === 403) {
+        toast.error('You can only delete your own alerts');
+      } else if (error.response?.status === 404) {
+        toast.error('Alert not found');
+      } else {
+        toast.error('Failed to delete alert');
+      }
+    }
+  };
+
   // CONNECTED TO BACKEND: Handle new alert submission
   const handleReportAlert = async () => {
     if (!newAlert.message.trim()) {
@@ -277,32 +321,35 @@ export function Alerts() {
     }
 
     try {
-      const response = await alertsAPI.createAlert(newAlert.message, newAlert.lat, newAlert.long);
+      const response = await alertsAPI.createAlert(
+        newAlert.message, 
+        newAlert.lat, 
+        newAlert.long, 
+        newAlert.type, 
+        newAlert.severity, 
+        newAlert.location
+      );
       if (response.data.success) {
         toast.success('Alert reported successfully! 🎉');
         setShowReportModal(false);
-        setNewAlert({ message: '', lat: 30.73, long: 76.78 });
-        fetchAlerts(); // Refresh alerts
+        setNewAlert({ 
+          message: '', 
+          lat: 30.73, 
+          long: 76.78, 
+          type: 'traffic',
+          severity: 'medium',
+          location: ''
+        });
+        // No need to refresh alerts - Socket.io will handle real-time update
       }
     } catch (error: any) {
-      // Handle error silently
+      if (error.response?.status === 401) {
+        toast.error('Please login to report alerts');
+      } else {
+        toast.error('Failed to report alert. Please try again.');
+      }
     }
   };
-
-  const filteredAlerts = alerts.filter(alert => {
-    if (!alert) return false;
-    
-    if (filter === 'verified') return alert.verified === true;
-    if (filter === 'nearby') return alert.location && (alert.location.includes('Chandigarh') || alert.location.includes('Sector'));
-    if (filter === 'recent') {
-      // Calculate if alert is recent (within 30 minutes)
-      const alertTime = new Date(alert.createdAt || alert.timeAgo || Date.now());
-      const now = new Date();
-      const diffMinutes = (now.getTime() - alertTime.getTime()) / (1000 * 60);
-      return diffMinutes <= 30;
-    }
-    return true;
-  });
 
   return (
     <div className="min-h-screen w-full flex flex-col bg-[#0a1411]">
@@ -525,7 +572,7 @@ export function Alerts() {
                 >
                   {filteredAlerts.map((alert, index) => (
                     <motion.div
-                      key={alert._id}
+                      key={alert._id || alert.id || `alert-${index}`}
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -20 }}
@@ -551,7 +598,7 @@ export function Alerts() {
                         <p className="text-gray-400 text-sm mb-2">{alert.message}</p>
                         <div className="flex items-center gap-2 text-xs text-gray-500">
                           <span className="material-symbols-outlined text-sm">location_on</span>
-                          {alert.location}
+                          {typeof alert.location === 'string' ? alert.location : 'Location reported'}
                         </div>
                       </div>
                       <span className="text-xs text-gray-500 whitespace-nowrap ml-4">{formatTimeAgo(alert.createdAt)}</span>
@@ -602,6 +649,26 @@ export function Alerts() {
                             share
                           </motion.span>
                         </button>
+                        {/* CONNECTED TO BACKEND: Delete button for own alerts */}
+                        {alert.reporter?.email === user?.email && (
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (window.confirm('Are you sure you want to delete this alert?')) {
+                                handleDeleteAlert(alert._id);
+                              }
+                            }}
+                            className="flex items-center gap-1.5 text-red-400 hover:text-red-300 transition-colors group"
+                          >
+                            <motion.span 
+                              className="material-symbols-outlined text-lg"
+                              whileHover={{ scale: 1.2 }}
+                              whileTap={{ scale: 0.8 }}
+                            >
+                              delete
+                            </motion.span>
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -718,20 +785,93 @@ export function Alerts() {
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Alert Message
+                    Alert Message <span className="text-red-400">*</span>
                   </label>
                   <textarea
                     value={newAlert.message}
                     onChange={(e) => setNewAlert({ ...newAlert, message: e.target.value })}
                     className="w-full bg-[#122620]/50 border border-white/10 rounded-xl px-4 py-3 text-sm focus:ring-1 focus:ring-[#0fb880] focus:border-[#0fb880] outline-none transition-all text-white focus:bg-[#122620]/70 resize-none"
-                    rows={4}
+                    rows={3}
                     placeholder="Describe the traffic condition, delay, or incident..."
+                    maxLength={200}
+                  />
+                  <div className="text-right">
+                    <span className="text-xs text-gray-400">{newAlert.message.length}/200</span>
+                  </div>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Alert Type
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      { id: 'traffic', label: 'Traffic', icon: 'traffic' },
+                      { id: 'accident', label: 'Accident', icon: 'crash_alert' },
+                      { id: 'delay', label: 'Delay', icon: 'schedule' },
+                      { id: 'construction', label: 'Construction', icon: 'construction' },
+                      { id: 'weather', label: 'Weather', icon: 'thunderstorm' },
+                      { id: 'info', label: 'Info', icon: 'info' }
+                    ].map((type) => (
+                      <button
+                        key={type.id}
+                        onClick={() => setNewAlert({ ...newAlert, type: type.id })}
+                        className={`p-3 rounded-xl border transition-all flex items-center gap-2 ${
+                          newAlert.type === type.id
+                            ? 'bg-[#0fb880]/20 border-[#0fb880]/30 text-[#0fb880]'
+                            : 'bg-white/5 border-white/10 text-gray-400 hover:border-[#0fb880]/20 hover:text-[#0fb880]'
+                        }`}
+                      >
+                        <span className="material-symbols-outlined text-sm">{type.icon}</span>
+                        <span className="text-xs font-medium">{type.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Severity
+                  </label>
+                  <div className="grid grid-cols-4 gap-2">
+                    {[
+                      { id: 'low', label: 'Low', color: 'text-green-400' },
+                      { id: 'medium', label: 'Medium', color: 'text-yellow-400' },
+                      { id: 'high', label: 'High', color: 'text-orange-400' },
+                      { id: 'critical', label: 'Critical', color: 'text-red-400' }
+                    ].map((severity) => (
+                      <button
+                        key={severity.id}
+                        onClick={() => setNewAlert({ ...newAlert, severity: severity.id })}
+                        className={`p-2 rounded-xl border transition-all flex flex-col items-center ${
+                          newAlert.severity === severity.id
+                            ? 'bg-white/10 border-white/30'
+                            : 'bg-white/5 border-white/10 hover:bg-white/10'
+                        }`}
+                      >
+                        <span className={`text-lg font-bold ${severity.color}`}>●</span>
+                        <span className="text-xs text-gray-300">{severity.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Location (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={newAlert.location}
+                    onChange={(e) => setNewAlert({ ...newAlert, location: e.target.value })}
+                    className="w-full bg-[#122620]/50 border border-white/10 rounded-xl px-4 py-3 text-sm focus:ring-1 focus:ring-[#0fb880] focus:border-[#0fb880] outline-none transition-all text-white focus:bg-[#122620]/70"
+                    placeholder="e.g., Sector 17 Chowk, NH-44, Patiala Road"
                   />
                 </div>
                 
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Location (Chandigarh area)
+                    Area (Chandigarh area)
                   </label>
                   <select
                     value={`${newAlert.lat},${newAlert.long}`}

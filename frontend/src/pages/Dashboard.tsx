@@ -1,13 +1,61 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { SafeMapView } from '../components/SafeMapView';
 import { UserMenu } from '../components/UserMenu';
 import { useLocationService } from '../hooks/useLocationService';
 import { useRoute } from '../context/RouteContext';
-import { alertsAPI } from '../lib/api';
+import { useAuth } from '../context/AuthContext';
+import { alertsAPI, getSocketUrl } from '../lib/api';
+import { io, Socket } from 'socket.io-client';
 import toast from 'react-hot-toast';
 import axios from 'axios';
+
+// Error Boundary Component
+class ErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean; error: Error | null }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('❌ Dashboard Error Boundary caught an error:', error, errorInfo);
+    this.setState({ error, hasError: true });
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen w-full flex items-center justify-center bg-[#0a1411]">
+          <div className="text-center p-8">
+            <div className="w-16 h-16 rounded-full bg-red-500/20 flex items-center justify-center mb-4">
+              <span className="material-icons text-red-500 text-2xl">error</span>
+            </div>
+            <h2 className="text-xl font-bold text-white mb-2">Something went wrong</h2>
+            <p className="text-gray-400 mb-4">
+              {this.state.error?.message || 'An unexpected error occurred while calculating your route.'}
+            </p>
+            <button
+              onClick={() => window.location.reload()}
+              className="bg-[#0fb880] hover:bg-[#0fb880]/90 text-white px-4 py-2 rounded-lg transition-colors"
+            >
+              Refresh Page
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 const punjabReports = [
   { 
@@ -50,9 +98,19 @@ const transportModes = [
 ];
 
 export function Dashboard() {
+  return (
+    <ErrorBoundary>
+      <DashboardContent />
+    </ErrorBoundary>
+  );
+}
+
+function DashboardContent() {
+  // CONNECTED TO BACKEND: Use auth context for user data
+  const { user } = useAuth();
   // CONNECTED TO BACKEND: Use location service for real-time data
   const { shareLocation, userLocation, isLoading: locationLoading } = useLocationService();
-  const { routeData, setStartPoint, setEndPoint, setRoutePath } = useRoute();
+  const { routeData, setStartPoint, setEndPoint, setRoutePath, clearRoute: clearContextRoute } = useRoute();
   
   const [selectedMode, setSelectedMode] = useState<'bus' | 'metro' | 'bike'>('bus');
   const [co2Offset] = useState(12.8);
@@ -74,8 +132,11 @@ export function Dashboard() {
   
   // CONNECTED TO BACKEND: Dynamic Community Feed state
   const [routeAlerts, setRouteAlerts] = useState<any[]>([]);
+  const [radiusAlerts, setRadiusAlerts] = useState<any[]>([]);
   const [isLoadingAlerts, setIsLoadingAlerts] = useState(false);
   const [routeCenter, setRouteCenter] = useState<[number, number] | null>(null);
+  const [socket, setSocket] = useState<Socket | null>(null);
+  const [showViewAllButton, setShowViewAllButton] = useState(false);
   
   // ADDED: Geocoding loading state
   const [isGeocoding, setIsGeocoding] = useState(false);
@@ -89,63 +150,180 @@ export function Dashboard() {
   // ADDED: Community alerts state for user-reported alerts
   const [communityAlerts, setCommunityAlerts] = useState<any[]>([]);
 
-  // CONNECTED TO BACKEND: Fetch route-specific alerts
-  const fetchRouteAlerts = async (center: [number, number]) => {
+  // Helper functions for alert display
+const getAlertIcon = (type: string) => {
+  const iconMap: { [key: string]: string } = {
+    'traffic': 'traffic',
+    'delay': 'schedule',
+    'accident': 'warning',
+    'info': 'info',
+    'clear': 'verified',
+    'construction': 'construction',
+    'weather': 'thunderstorm',
+    'general': 'notifications'
+  };
+  return iconMap[type] || iconMap.general;
+};
+
+const getAlertSeverityColor = (severity: string) => {
+  const colorMap: { [key: string]: string } = {
+    'low': 'text-green-400',
+    'medium': 'text-yellow-400', 
+    'high': 'text-orange-400',
+    'critical': 'text-red-400'
+  };
+  return colorMap[severity] || colorMap.medium;
+};
+
+const getAlertTypeColor = (type: string) => {
+  const colorMap: { [key: string]: string } = {
+    'traffic': 'text-red-400',
+    'delay': 'text-yellow-400',
+    'accident': 'text-orange-400',
+    'info': 'text-blue-400',
+    'clear': 'text-green-400',
+    'construction': 'text-purple-400',
+    'weather': 'text-cyan-400',
+    'general': 'text-gray-400'
+  };
+  return colorMap[type] || colorMap.general;
+};
+
+// CONNECTED TO BACKEND: Fetch alerts based on user location on page load
+  const fetchLocationBasedAlerts = async () => {
+    if (!userLocation) return;
+    
     setIsLoadingAlerts(true);
     try {
-      if (routeData.startCoords && routeData.endCoords) {
-        // Get all alerts and filter by proximity to route
-        const response = await alertsAPI.getAlerts();
+      const response = await alertsAPI.getNearbyAlerts(userLocation[0], userLocation[1], 8);
+      
+      if (response.data.success && response.data.alerts) {
+        const alerts = response.data.alerts;
         
-        if (response.data.success && response.data.alerts) {
-          // Combine backend alerts with community alerts from localStorage
-          const communityAlerts = JSON.parse(localStorage.getItem('commuteSmart_alerts') || '[]');
-          const allAlerts = [...response.data.alerts, ...communityAlerts];
-          
-          // Filter alerts by proximity to route center (within ~8km)
-          const nearbyAlerts = allAlerts.filter((alert: any) => {
-            // Backend stores coordinates as location.coordinates: [longitude, latitude]
-            // Community alerts have lat/long properties
-            let latitude, longitude;
-            
-            if (alert.location && alert.location.coordinates && alert.location.coordinates.length >= 2) {
-              // Backend alert structure
-              [longitude, latitude] = alert.location.coordinates;
-            } else if (alert.lat && alert.long) {
-              // Community alert structure
-              latitude = alert.lat;
-              longitude = alert.long;
-            } else {
-              return false;
-            }
-            
-            const distance = calculateDistance(center[0], center[1], latitude, longitude);
-            return distance <= 50; // Increased to 50km radius for testing
-          });
-          
-          // If no alerts in database, use mock data for now
-          if (response.data.alerts.length === 0) {
-            setRouteAlerts(punjabReports.slice(0, 3)); // Show first 3 mock reports
-          } else if (nearbyAlerts.length === 0) {
-            setRouteAlerts(allAlerts);
-          } else {
-            setRouteAlerts(nearbyAlerts);
-          }
-        } else {
-          setRouteAlerts([]);
-        }
+        // Transform alerts for display
+        const transformedAlerts = alerts.map((alert: any) => ({
+          ...alert,
+          id: alert._id || alert.id || `alert-${Math.random()}`,
+          name: alert.reportedBy?.email || 'Anonymous',
+          avatar: alert.reportedBy?.email?.charAt(0).toUpperCase() || 'A',
+          text: alert.message || 'No message available',
+          time: formatTimeAgo(alert.timeStamp || alert.createdAt || new Date().toISOString()),
+          user: alert.reportedBy?.email === user?.email ? 'You' : 'Community User',
+          type: alert.type || 'general',
+          severity: alert.severity || 'medium'
+        }));
+        
+        // Sort by timestamp and limit to 5 most recent for Dashboard
+        const sortedAlerts = transformedAlerts.sort((a: any, b: any) => {
+          const aTime = new Date(a.timeStamp || a.createdAt || 0).getTime();
+          const bTime = new Date(b.timeStamp || b.createdAt || 0).getTime();
+          return bTime - aTime;
+        });
+        
+        const limitedAlerts = sortedAlerts.slice(0, 5);
+        setRadiusAlerts(limitedAlerts);
+        setShowViewAllButton(alerts.length > 5);
       } else {
-        // Fallback to general alerts if no route
-        const response = await alertsAPI.getAlerts();
-        
-        if (response.data.success && response.data.alerts) {
-          setRouteAlerts(response.data.alerts);
-        } else {
-          setRouteAlerts([]);
-        }
+        setRadiusAlerts([]);
+        setShowViewAllButton(false);
       }
     } catch (error: any) {
+      console.error('❌ Error fetching location-based alerts:', error);
+      setRadiusAlerts([]);
+      setShowViewAllButton(false);
+    } finally {
+      setIsLoadingAlerts(false);
+    }
+  };
+
+  // Initialize route state from RouteContext on mount and sync changes
+  useEffect(() => {
+    // If RouteContext has data, update local states
+    if (routeData.startPoint || routeData.endPoint) {
+      
+      // Update route center if we have coordinates
+      if (routeData.startCoords && routeData.endCoords) {
+        const centerLat = (routeData.startCoords[0] + routeData.endCoords[0]) / 2;
+        const centerLng = (routeData.startCoords[1] + routeData.endCoords[1]) / 2;
+        const center = [centerLat, centerLng] as [number, number];
+        setRouteCenter(center);
+        
+        // Fetch alerts for the restored route
+        fetchRouteAlerts(center);
+      }
+    }
+  }, [routeData.startPoint, routeData.endPoint, routeData.startCoords, routeData.endCoords]);
+
+  // Initialize location-based alerts on page load
+  useEffect(() => {
+    if (userLocation && !routeCenter) {
+      fetchLocationBasedAlerts();
+    }
+  }, [userLocation, routeCenter]);
+
+  // CONNECTED TO BACKEND: Fetch route-specific alerts with 8km radius and 4-5 limit
+  const fetchRouteAlerts = async (center: [number, number]) => {
+    if (!center || !Array.isArray(center) || center.length !== 2) {
+      console.error('❌ Invalid center coordinates provided to fetchRouteAlerts');
       setRouteAlerts([]);
+      setShowViewAllButton(false);
+      return;
+    }
+
+    setIsLoadingAlerts(true);
+    try {
+      // Use the nearby alerts API with 8km radius
+      const response = await alertsAPI.getNearbyAlerts(center[0], center[1], 8);
+      
+      if (response.data.success && response.data.alerts) {
+        const alerts = response.data.alerts;
+        
+        // Transform alerts for display with error handling
+        const transformedAlerts = alerts.map((alert: any) => {
+          try {
+            return {
+              ...alert,
+              id: alert._id || alert.id || `alert-${Math.random()}`,
+              name: alert.reportedBy?.email || 'Anonymous',
+              avatar: alert.reportedBy?.email?.charAt(0).toUpperCase() || 'A',
+              text: alert.message || 'No message available',
+              time: formatTimeAgo(alert.timeStamp || alert.createdAt || new Date().toISOString()),
+              user: alert.reportedBy?.email === user?.email ? 'You' : 'Community User'
+            };
+          } catch (error) {
+            console.error('Error transforming alert:', error, alert);
+            return {
+              ...alert,
+              id: `fallback-${Math.random()}`,
+              name: 'Unknown',
+              avatar: 'U',
+              text: 'Alert data unavailable',
+              time: 'Unknown',
+              user: 'Unknown'
+            };
+          }
+        });
+        
+        // Sort by timestamp and limit to 4-5 most recent for Dashboard
+        const sortedAlerts = transformedAlerts.sort((a: any, b: any) => {
+          const aTime = new Date(a.timeStamp || a.createdAt || 0).getTime();
+          const bTime = new Date(b.timeStamp || b.createdAt || 0).getTime();
+          return bTime - aTime;
+        });
+        
+        const limitedAlerts = sortedAlerts.slice(0, 5);
+        setRouteAlerts(limitedAlerts);
+        setShowViewAllButton(alerts.length > 5);
+      } else {
+        setRouteAlerts([]);
+        setShowViewAllButton(false);
+      }
+    } catch (error: any) {
+      console.error('❌ Error fetching route alerts:', error);
+      setRouteAlerts([]);
+      setShowViewAllButton(false);
+      
+      // Don't show toast for dashboard errors, just fail silently
     } finally {
       setIsLoadingAlerts(false);
     }
@@ -205,6 +383,12 @@ export function Dashboard() {
 
   // ROBUST GEOCODING FOR PUNJAB: Multiple queries + fallback dictionary
   const geocodePlace = async (placeName: string): Promise<[number, number] | null> => {
+    // Input validation
+    if (!placeName || typeof placeName !== 'string' || placeName.trim().length === 0) {
+      console.error('❌ Invalid place name provided to geocodePlace');
+      return null;
+    }
+    
     // Clean input: remove commas, extra spaces, and normalize
     const cleanName = placeName.trim().replace(/,/g, '').replace(/\s+/g, ' ').toLowerCase();
     
@@ -420,7 +604,7 @@ export function Dashboard() {
     try {
       if (userLocation) {
         await shareLocation(userLocation[0], userLocation[1], 'user');
-        toast.success('Location shared successfully! 📍');
+        console.log('Location shared successfully');
       } else {
         toast.error('Location not available. Please enable location services.');
       }
@@ -581,40 +765,76 @@ export function Dashboard() {
     setIsGeocoding(true);
     
     try {
+      console.log('🚀 Starting route calculation for:', routeData.startPoint, 'to', routeData.endPoint);
+      
       const startCoords = await geocodePlace(routeData.startPoint);
       const endCoords = await geocodePlace(routeData.endPoint);
       
       if (!startCoords || !endCoords) {
+        console.error('❌ Geocoding failed for one or both locations');
         toast.error('Could not find locations. Please try different place names.');
         return;
       }
+
+      console.log('📍 Geocoded coordinates:', { startCoords, endCoords });
 
       setStartPoint(routeData.startPoint, startCoords);
       setEndPoint(routeData.endPoint, endCoords);
 
       const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${startCoords[1]},${startCoords[0]};${endCoords[1]},${endCoords[0]}?overview=full&geometries=geojson`;
+      console.log('🌐 Requesting route from OSRM:', osrmUrl);
+      
       const response = await fetch(osrmUrl);
+      
+      if (!response.ok) {
+        throw new Error(`OSRM API error: ${response.status} ${response.statusText}`);
+      }
+      
       const data = await response.json();
+      console.log('📊 OSRM response:', data);
       
       if (data.routes && data.routes.length > 0) {
         const route = data.routes[0];
         const coordinates = route.geometry.coordinates.map((coord: number[]) => [coord[1], coord[0]]) as [number, number][];
         
+        console.log('✅ Route calculated successfully, coordinates:', coordinates.length);
+        
         setRoutePath(coordinates);
         
         const centerLat = (startCoords[0] + endCoords[0]) / 2;
         const centerLng = (startCoords[1] + endCoords[1]) / 2;
-        setRouteCenter([centerLat, centerLng]);
+        const routeCenter = [centerLat, centerLng] as [number, number];
         
-        await fetchRouteAlerts([centerLat, centerLng]);
+        console.log('🎯 Route center calculated:', routeCenter);
+        setRouteCenter(routeCenter);
+        
+        // Fetch alerts with error handling
+        try {
+          await fetchRouteAlerts(routeCenter);
+        } catch (alertError) {
+          console.error('⚠️ Error fetching route alerts:', alertError);
+          // Don't fail the whole route calculation if alerts fail
+        }
         
         toast.success('Route calculated successfully! 🎉');
       } else {
+        console.error('❌ No routes found in OSRM response');
         toast.error('Could not calculate route. Please try again.');
       }
     } catch (error) {
-      console.error('Route calculation error:', error);
-      toast.error('Failed to calculate route. Please check your network connection.');
+      console.error('❌ Route calculation error:', error);
+      
+      if (error instanceof Error) {
+        if (error.message.includes('NetworkError') || error.message.includes('fetch')) {
+          toast.error('Network error. Please check your internet connection.');
+        } else if (error.message.includes('OSRM API error')) {
+          toast.error('Route service temporarily unavailable. Please try again.');
+        } else {
+          toast.error('Failed to calculate route. Please try again.');
+        }
+      } else {
+        toast.error('An unexpected error occurred. Please try again.');
+      }
     } finally {
       setIsCalculatingRoute(false);
       setIsGeocoding(false);
@@ -639,6 +859,98 @@ export function Dashboard() {
       stableFetchGeneralFeed();
     }
   }, [hasRouteCenter, stableFetchGeneralFeed]);
+
+  // HELPER: Format time ago for alerts
+  const formatTimeAgo = (timeStamp: string) => {
+    const now = new Date();
+    const alertTime = new Date(timeStamp);
+    const diffMinutes = Math.floor((now.getTime() - alertTime.getTime()) / (1000 * 60));
+    
+    if (diffMinutes < 1) return 'Just now';
+    if (diffMinutes < 60) return `${diffMinutes}m ago`;
+    
+    const diffHours = Math.floor(diffMinutes / 60);
+    if (diffHours < 24) return `${diffHours}h ago`;
+    
+    const diffDays = Math.floor(diffHours / 24);
+    return `${diffDays}d ago`;
+  };
+
+  // REAL-TIME: Socket.io integration for new alerts with proper cleanup
+  useEffect(() => {
+    let newSocket: Socket | null = null;
+    
+    try {
+      newSocket = io(getSocketUrl(), {
+        withCredentials: true,
+        transports: ['polling'], // Start with polling to avoid WebSocket issues
+        timeout: 10000,
+        reconnection: true,
+        reconnectionAttempts: 3,
+        reconnectionDelay: 1000,
+        forceNew: true
+      });
+
+      newSocket.on('connect', () => {
+        console.log('🔌 Socket connected for real-time alerts');
+      });
+
+      newSocket.on('connect_error', (error) => {
+        console.log('⚠️ Socket connection failed, continuing without real-time updates:', error.message);
+      });
+
+      newSocket.on('disconnect', (reason) => {
+        console.log('🔌 Socket disconnected:', reason);
+      });
+
+      // REAL-TIME: Listen for new alerts
+      newSocket.on('newAlert', (alert: any) => {
+        console.log('📢 New real-time alert received:', alert);
+        
+        // If we have a route center, check if alert is within radius
+        if (routeCenter) {
+          const alertLat = alert.location?.coordinates?.[1] || alert.lat;
+          const alertLong = alert.location?.coordinates?.[0] || alert.long;
+          
+          if (alertLat && alertLong) {
+            const distance = calculateDistance(routeCenter[0], routeCenter[1], alertLat, alertLong);
+            
+            if (distance <= 8) { // Within 8km radius
+              const transformedAlert = {
+                ...alert,
+                id: alert._id || alert.id || `alert-${Math.random()}`,
+                name: alert.reportedBy?.email || 'Anonymous',
+                avatar: alert.reportedBy?.email?.charAt(0).toUpperCase() || 'A',
+                text: alert.message || 'No message available',
+                time: 'Just now',
+                user: alert.reportedBy?.email === user?.email ? 'You' : 'Community User'
+              };
+              
+              setRouteAlerts(prev => {
+                const updated = [transformedAlert, ...prev];
+                return updated.slice(0, 5); // Keep only 5 most recent
+              });
+              
+              // New alert detected silently (no toast for auto-triggered events)
+            }
+          }
+        }
+      });
+
+      setSocket(newSocket);
+    } catch (error) {
+      console.log('⚠️ Failed to initialize socket, continuing without real-time updates:', error);
+    }
+
+    // Proper cleanup on unmount
+    return () => {
+      if (newSocket) {
+        newSocket.removeAllListeners(); // Remove all event listeners
+        newSocket.close();
+        console.log('🔌 Socket connection cleaned up');
+      }
+    };
+  }, [routeCenter, user?.email]);
 
   // CONNECTED TO BACKEND: Listen for new community alerts
   useEffect(() => {
@@ -670,6 +982,9 @@ export function Dashboard() {
     setRoutePath(null);
     setRouteCenter(null);
     setRouteAlerts([]);
+    setRadiusAlerts([]);
+    // Also clear route in RouteContext
+    clearContextRoute();
   };
 
   return (
@@ -769,7 +1084,7 @@ export function Dashboard() {
                   placeholder="Enter Starting Point" 
                   type="text" 
                   value={routeData.startPoint}
-                  onChange={(e) => setStartPoint(e.target.value, routeData.startCoords || [30.73, 76.78])}
+                  onChange={(e) => setStartPoint(e.target.value)}
                 />
               </div>
               <div className="relative">
@@ -780,7 +1095,7 @@ export function Dashboard() {
                   placeholder="Enter Ending Point" 
                   type="text" 
                   value={routeData.endPoint}
-                  onChange={(e) => setEndPoint(e.target.value, routeData.endCoords || [30.73, 76.78])}
+                  onChange={(e) => setEndPoint(e.target.value)}
                 />
               </div>
               <div className="grid grid-cols-3 gap-2 py-2">
@@ -971,91 +1286,164 @@ export function Dashboard() {
               {!isLoadingAlerts && (
                 <AnimatePresence>
                   {routeCenter ? (
-                    // Show route-specific alerts
-                    routeAlerts.length > 0 ? (
-                      routeAlerts.map((alert, index) => (
-                        <motion.div
-                          key={`route-alert-${index}`}
-                          initial={{ opacity: 0, x: -20 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          exit={{ opacity: 0, x: 20 }}
-                          transition={{ delay: index * 0.1, duration: 0.3 }}
-                          className="p-3 bg-orange-500/10 rounded-xl border border-orange-500/20 hover:border-orange-500/40 transition-all cursor-pointer group"
-                          whileHover={{ scale: 1.02, backgroundColor: 'rgba(251, 146, 60, 0.15)' }}
-                        >
-                          <div className="flex justify-between items-start mb-1">
-                            <div className="flex items-center gap-2">
-                              <div className="w-6 h-6 rounded-full bg-orange-500/20 flex items-center justify-center text-[8px] font-black text-orange-400 border border-orange-500/20 uppercase">
-                                ⚠️
+                    <>
+                      {/* Route-specific alerts (Priority 1) */}
+                      {routeAlerts.length > 0 && (
+                        <>
+                          <div className="text-xs font-bold text-orange-400 mb-2 uppercase tracking-wider">Route Alerts</div>
+                          {routeAlerts.map((alert, index) => (
+                            <motion.div
+                              key={`route-alert-${index}`}
+                              initial={{ opacity: 0, x: -20 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              exit={{ opacity: 0, x: 20 }}
+                              transition={{ delay: index * 0.1, duration: 0.3 }}
+                              className="p-3 bg-orange-500/10 rounded-xl border border-orange-500/20 hover:border-orange-500/40 transition-all cursor-pointer group"
+                              whileHover={{ scale: 1.02, backgroundColor: 'rgba(251, 146, 60, 0.15)' }}
+                            >
+                              <div className="flex justify-between items-start mb-2">
+                                <div className="flex items-center gap-2">
+                                  <div className={`w-6 h-6 rounded-full bg-orange-500/20 flex items-center justify-center text-[8px] font-black border border-orange-500/20 uppercase ${getAlertTypeColor(alert.type)}`}>
+                                    <span className="material-symbols-outlined text-xs">{getAlertIcon(alert.type)}</span>
+                                  </div>
+                                  <div className="flex flex-col">
+                                    <span className="text-xs font-bold text-white">
+                                      {alert.user === 'You' ? 'Your Report' : 'Route Alert'}
+                                    </span>
+                                    <div className="flex items-center gap-1">
+                                      <span className={`text-[8px] uppercase font-medium ${getAlertSeverityColor(alert.severity)}`}>
+                                        {alert.severity || 'medium'}
+                                      </span>
+                                      <span className="text-[8px] text-gray-500">•</span>
+                                      <span className={`text-[8px] uppercase font-medium ${getAlertTypeColor(alert.type)}`}>
+                                        {alert.type || 'general'}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                                <span className="text-[10px] text-gray-500">{alert.time || 'Just now'}</span>
                               </div>
-                              <span className="text-xs font-bold text-white">
-                                {alert.user === 'You' ? 'Your Report' : 'Route Alert'}
-                              </span>
-                            </div>
-                            <span className="text-[10px] text-gray-500">{alert.time || 'Just now'}</span>
-                          </div>
-                          <p className="text-xs text-gray-300">{alert.message || alert.text || 'Alert on your route'}</p>
-                          {alert.location && alert.user === 'You' && (
-                            <p className="text-xs text-orange-400 mt-1">📍 {alert.location}</p>
-                          )}
-                        </motion.div>
-                      ))
-                    ) : (
-                      // No alerts found message
-                      <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="flex flex-col items-center justify-center py-8 text-center"
-                      >
-                        <span className="material-symbols-outlined text-3xl text-green-400 mb-3">check_circle</span>
-                        <span className="text-sm text-gray-300 font-medium">No alerts or reports found</span>
-                        <span className="text-xs text-gray-500 mt-1">on this route or within 8km radius</span>
-                      </motion.div>
-                    )
-                  ) : (
-                    // Show default community feed when no route is selected
-                    // Combine user reports with default reports
-                    [...communityAlerts, ...punjabReports].map((report, index) => (
-                      <motion.div
-                        key={report.id || index}
-                        initial={{ opacity: 0, x: -20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: 20 }}
-                        transition={{ delay: index * 0.1, duration: 0.3 }}
-                        className={`p-3 rounded-xl border transition-all cursor-pointer group ${
-                          report.user === 'You' 
-                            ? 'bg-orange-500/10 border-orange-500/20 hover:border-orange-500/40' 
-                            : 'bg-white/5 border-white/5 hover:border-[#0fb880]/20'
-                        }`}
-                        whileHover={{ scale: 1.02, backgroundColor: report.user === 'You' ? 'rgba(251, 146, 60, 0.15)' : 'rgba(255,255,255,0.08)' }}
-                      >
-                        <div className="flex justify-between items-start mb-1">
-                          <div className="flex items-center gap-2">
-                            {report.user === 'You' ? (
-                              <div className="w-6 h-6 rounded-full bg-orange-500/20 flex items-center justify-center text-[8px] font-black text-orange-400 border border-orange-500/20 uppercase">
-                                ⚠️
+                              <p className="text-xs text-gray-300 mb-1">{alert.message || alert.text || 'Alert on your route'}</p>
+                              
+                              {/* Affected route information */}
+                              {(routeData.startPoint && routeData.endPoint) && (
+                                <div className="flex items-center gap-1 text-xs text-orange-300 mb-1">
+                                  <span className="material-symbols-outlined text-[10px]">route</span>
+                                  <span>{routeData.startPoint} → {routeData.endPoint}</span>
+                                </div>
+                              )}
+                              
+                              {/* Location for user reports */}
+                              {alert.location && alert.user === 'You' && (
+                                <p className="text-xs text-orange-400 mt-1">📍 Location reported</p>
+                              )}
+                              
+                              {/* Reporter information */}
+                              <div className="flex items-center gap-1 mt-2 text-[10px] text-gray-400">
+                                <span className="material-symbols-outlined text-[10px]">person</span>
+                                <span>Reported by {alert.name}</span>
                               </div>
-                            ) : report.isSystem ? (
-                              <div className="w-6 h-6 rounded-full bg-[#0fb880]/20 flex items-center justify-center text-[8px] font-black text-[#0fb880] border border-[#0fb880]/20 uppercase">
-                                {report.avatar}
-                              </div>
-                            ) : (
-                              <div className="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center text-white text-[10px] font-bold border border-white/20">
-                                {report.avatar}
-                              </div>
-                            )}
-                            <span className="text-xs font-bold text-white">
-                              {report.user === 'You' ? 'Your Report' : report.name}
-                            </span>
-                          </div>
-                          <span className="text-[10px] text-gray-500">{report.time || 'Just now'}</span>
+                            </motion.div>
+                          ))}
+                        </>
+                      )}
+
+                      {/* Divider between route and radius alerts */}
+                      {routeAlerts.length > 0 && radiusAlerts.length > 0 && (
+                        <div className="flex items-center gap-2 py-2">
+                          <div className="flex-1 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent"></div>
+                          <span className="text-xs text-gray-500 uppercase tracking-wider">Nearby</span>
+                          <div className="flex-1 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent"></div>
                         </div>
-                        <p className="text-xs text-gray-300">{report.text || report.message}</p>
-                        {report.location && report.user === 'You' && (
-                          <p className="text-xs text-orange-400 mt-1">📍 {report.location}</p>
-                        )}
-                      </motion.div>
-                    ))
+                      )}
+
+                      {/* Radius alerts (Priority 2) */}
+                      {radiusAlerts.length > 0 && (
+                        <>
+                          {routeAlerts.length === 0 && (
+                            <div className="text-xs font-bold text-blue-400 mb-2 uppercase tracking-wider">Nearby Alerts</div>
+                          )}
+                          {radiusAlerts.map((alert, index) => (
+                            <motion.div
+                              key={`radius-alert-${index}`}
+                              initial={{ opacity: 0, x: -20 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              exit={{ opacity: 0, x: 20 }}
+                              transition={{ delay: (routeAlerts.length + index) * 0.1, duration: 0.3 }}
+                              className="p-3 bg-blue-500/10 rounded-xl border border-blue-500/20 hover:border-blue-500/40 transition-all cursor-pointer group"
+                              whileHover={{ scale: 1.02, backgroundColor: 'rgba(59, 130, 246, 0.15)' }}
+                            >
+                              <div className="flex justify-between items-start mb-2">
+                                <div className="flex items-center gap-2">
+                                  <div className={`w-6 h-6 rounded-full bg-blue-500/20 flex items-center justify-center text-[8px] font-black border border-blue-500/20 uppercase ${getAlertTypeColor(alert.type)}`}>
+                                    <span className="material-symbols-outlined text-xs">{getAlertIcon(alert.type)}</span>
+                                  </div>
+                                  <div className="flex flex-col">
+                                    <span className="text-xs font-bold text-white">
+                                      {alert.user === 'You' ? 'Your Report' : 'Nearby Alert'}
+                                    </span>
+                                    <div className="flex items-center gap-1">
+                                      <span className={`text-[8px] uppercase font-medium ${getAlertSeverityColor(alert.severity)}`}>
+                                        {alert.severity || 'medium'}
+                                      </span>
+                                      <span className="text-[8px] text-gray-500">•</span>
+                                      <span className={`text-[8px] uppercase font-medium ${getAlertTypeColor(alert.type)}`}>
+                                        {alert.type || 'general'}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                                <span className="text-[10px] text-gray-500">{alert.time || 'Just now'}</span>
+                              </div>
+                              <p className="text-xs text-gray-300 mb-1">{alert.message || alert.text || 'Alert in your area'}</p>
+                              
+                              {/* Location for user reports */}
+                              {alert.location && alert.user === 'You' && (
+                                <p className="text-xs text-blue-400 mt-1">📍 Location reported</p>
+                              )}
+                              
+                              {/* Reporter information */}
+                              <div className="flex items-center gap-1 mt-2 text-[10px] text-gray-400">
+                                <span className="material-symbols-outlined text-[10px]">person</span>
+                                <span>Reported by {alert.name}</span>
+                              </div>
+                            </motion.div>
+                          ))}
+                        </>
+                      )}
+
+                      {/* No alerts found message */}
+                      {routeAlerts.length === 0 && radiusAlerts.length === 0 && (
+                        <div className="flex flex-col items-center justify-center py-8 text-center">
+                          <span className="material-symbols-outlined text-3xl text-green-400 mb-3">check_circle</span>
+                          <span className="text-sm text-gray-300 font-medium">No alerts or reports found</span>
+                          <span className="text-xs text-gray-500 mt-1">on this route or within 8km radius</span>
+                        </div>
+                      )}
+                      
+                      {/* Show "View All Alerts" button when route has more alerts */}
+                      {showViewAllButton && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: 0.3 }}
+                        >
+                          <Link 
+                            to="/alerts"
+                            className="w-full py-2 rounded-xl bg-[#0fb880]/20 hover:bg-[#0fb880]/30 flex items-center justify-center gap-2 text-sm text-[#0fb880] hover:text-white transition-colors group border border-[#0fb880]/30"
+                          >
+                            <span className="material-symbols-outlined text-lg group-hover:rotate-180 transition-transform duration-500">visibility</span>
+                            View All Alerts
+                          </Link>
+                        </motion.div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center py-8 text-center">
+                      <span className="material-symbols-outlined text-3xl text-green-400 mb-3">check_circle</span>
+                      <span className="text-sm text-gray-300 font-medium">No alerts or reports found</span>
+                      <span className="text-xs text-gray-500 mt-1">on this route or within 8km radius</span>
+                    </div>
                   )}
                 </AnimatePresence>
               )}

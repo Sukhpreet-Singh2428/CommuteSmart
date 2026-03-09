@@ -1,6 +1,57 @@
+/* Leaflet CSS for map functionality */
+@import url('https://unpkg.com/leaflet@1.9.4/dist/leaflet.css');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Leaflet map container fixes */
+.leaflet-container {
+  font-family: inherit !important;
+}
+
+.leaflet-control-container {
+  font-family: inherit !important;
+}
+
+/* Ensure map fills container properly */
+.leaflet-container {
+  height: 100% !important;
+  width: 100% !important;
+  background: #1a231a !important;
+}
+
+/* Fix map tile loading */
+.leaflet-tile-pane {
+  z-index: 1 !important;
+}
+
+.leaflet-overlay-pane {
+  z-index: 2 !important;
+}
+
+.leaflet-map-pane {
+  z-index: 1 !important;
+}
+
+/* Dark theme for map */
+.leaflet-container .leaflet-control {
+  background: rgba(16, 34, 28, 0.9) !important;
+  border: 1px solid rgba(15, 184, 128, 0.2) !important;
+}
+
+.leaflet-container .leaflet-control a {
+  color: #0fb880 !important;
+}
+
+.leaflet-container .leaflet-control a:hover {
+  color: #0ea5e9 !important;
+}
+
+/* Fix zoom control positioning */
+.leaflet-control-zoom {
+  border: 1px solid rgba(15, 184, 128, 0.2) !important;
+}
 
 @layer base {
   html {

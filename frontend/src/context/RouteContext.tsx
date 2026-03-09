@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 
 interface RouteData {
   startPoint: string;
@@ -10,8 +10,8 @@ interface RouteData {
 
 interface RouteContextType {
   routeData: RouteData;
-  setStartPoint: (point: string, coords: [number, number]) => void;
-  setEndPoint: (point: string, coords: [number, number]) => void;
+  setStartPoint: (point: string, coords?: [number, number]) => void;
+  setEndPoint: (point: string, coords?: [number, number]) => void;
   setRoutePath: (path: [number, number][]) => void;
   clearRoute: () => void;
 }
@@ -29,12 +29,12 @@ const RouteContext = createContext<RouteContextType | undefined>(undefined);
 export function RouteProvider({ children }: { children: ReactNode }) {
   const [routeData, setRouteData] = useState<RouteData>(defaultRouteData);
 
-  const setStartPoint = (point: string, coords: [number, number]) => {
-    setRouteData(prev => ({ ...prev, startPoint: point, startCoords: coords }));
+  const setStartPoint = (point: string, coords?: [number, number]) => {
+    setRouteData(prev => ({ ...prev, startPoint: point, startCoords: coords || null }));
   };
 
-  const setEndPoint = (point: string, coords: [number, number]) => {
-    setRouteData(prev => ({ ...prev, endPoint: point, endCoords: coords }));
+  const setEndPoint = (point: string, coords?: [number, number]) => {
+    setRouteData(prev => ({ ...prev, endPoint: point, endCoords: coords || null }));
   };
 
   const setRoutePath = (path: [number, number][]) => {

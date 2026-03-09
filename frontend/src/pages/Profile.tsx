@@ -99,7 +99,7 @@ export function Profile() {
 
   const handleSettingToggle = (label: string) => {
     setSettings(prev => ({ ...prev, [label]: !prev[label] }));
-    toast.success(`${label} ${!settings[label] ? 'enabled' : 'disabled'}`);
+    // Setting changed silently (no toast for minor UI actions)
   };
 
   return (
@@ -573,7 +573,7 @@ export function Profile() {
                 <h4 className="font-bold text-white text-sm mb-1">Pro Tip</h4>
                 <p className="text-xs text-gray-300 mb-3">Use the metro during peak hours to avoid traffic and earn double XP!</p>
                 <button 
-                  onClick={() => toast.success('Tip noted!')}
+                  onClick={() => console.log('Tip acknowledged')}
                   className="text-xs bg-[#0fb880] hover:bg-[#0fb880]/90 text-white px-3 py-1.5 rounded transition-colors"
                 >
                   Got it

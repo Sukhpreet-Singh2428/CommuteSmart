@@ -21,8 +21,8 @@ const MapViewErrorBoundary = ({ children }: { children: React.ReactNode }) => {
 
 // CONNECTED TO BACKEND: Enhanced pulse icon for real-time bus markers
 const pulseIcon = (color: string, type?: 'bus' | 'metro' | 'alert' | 'warning' | 'error' | 'info', isPulsing?: boolean) => {
-  const iconColor = type === 'alert' || type === 'warning' || type === 'error' || type === 'info' ? '#eab308' : color;
-  const pulseColor = type === 'alert' || type === 'warning' || type === 'error' || type === 'info' ? '#f59e0b' : '#10b981';
+  const iconColor = type === 'alert' || type === 'warning' || type === 'error' || type === 'info' ? color : color;
+  const pulseColor = type === 'alert' || type === 'warning' || type === 'error' || type === 'info' ? color : '#10b981';
   
   // POLISHED: Enhanced SVG with better visual design and pulsing animation
   const pulseAnimation = isPulsing ? `
@@ -41,7 +41,7 @@ const pulseIcon = (color: string, type?: 'bus' | 'metro' | 'alert' | 'warning' |
     <svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
       ${pulseAnimation}
       <defs>
-        <filter id="glow-${color.replace('#', '')}">
+        <filter id="glow-${color.replace('#', '').replace('(', '').replace(')', '')}">
           <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
           <feMerge>
             <feMergeNode in="coloredBlur"/>
@@ -49,12 +49,15 @@ const pulseIcon = (color: string, type?: 'bus' | 'metro' | 'alert' | 'warning' |
           </feMerge>
         </filter>
       </defs>
-      <circle cx="16" cy="16" r="12" fill="${iconColor}" opacity="0.9" filter="url(#glow-${color.replace('#', '')})"/>
+      <circle cx="16" cy="16" r="12" fill="${iconColor}" opacity="0.9" filter="url(#glow-${color.replace('#', '').replace('(', '').replace(')', '')})"/>
       <circle cx="16" cy="16" r="8" fill="white" opacity="0.9"/>
       <circle cx="16" cy="16" r="4" fill="${iconColor}"/>
       ${type === 'bus' ? '<rect x="13" y="14" width="6" height="4" fill="white" rx="1"/>' : ''}
       ${type === 'metro' ? '<circle cx="16" cy="16" r="2" fill="white"/>' : ''}
       ${type === 'alert' ? '<path d="M16 12 L18 18 L14 18 Z" fill="white"/>' : ''}
+      ${type === 'warning' ? '<path d="M16 10 L20 18 L12 18 Z" fill="white"/>' : ''}
+      ${type === 'error' ? '<path d="M16 12 L17 16 L16 20 L15 16 Z" fill="white"/>' : ''}
+      ${type === 'info' ? '<circle cx="16" cy="16" r="3" fill="none" stroke="white" stroke-width="1.5"/>' : ''}
     </svg>
   `;
   
@@ -501,18 +504,61 @@ export function MapView({ routePath, startPoint, endPoint, routeAlerts }: {
           </Marker>
         ))}
         
-        {/* ADDED: Route-specific alert markers */}
+        {/* ENHANCED: Route-specific alert markers with severity-based colors */}
         {routeAlerts && routeAlerts.map((alert, index) => {
-          // Calculate distance from route (simplified - within 2km)
-          const alertPos: [number, number] = [alert.latitude || alert.lat || 30.7, alert.longitude || alert.lng || 76.8];
-          const alertType = alert.type || alert.severity || 'warning';
-          const alertIcon = alertType === 'jam' ? 'warning' : alertType === 'accident' ? 'error' : 'info';
+          // Get alert coordinates from various possible fields
+          const alertLat = alert.latitude || alert.lat || alert.location?.coordinates?.[1];
+          const alertLng = alert.longitude || alert.lng || alert.location?.coordinates?.[0];
+          
+          // Skip if no valid coordinates
+          if (!alertLat || !alertLng || isNaN(alertLat) || isNaN(alertLng)) {
+            return null;
+          }
+          
+          const alertPos: [number, number] = [alertLat, alertLng];
+          const severity = alert.severity || 'medium';
+          const type = alert.type || 'general';
+          
+          // Determine color based on severity
+          let severityColor = '#f59e0b'; // default yellow/amber
+          let iconType: 'bus' | 'metro' | 'alert' | 'warning' | 'error' | 'info' = 'info';
+          
+          switch (severity) {
+            case 'critical':
+            case 'high':
+              severityColor = '#ef4444'; // red
+              iconType = 'error';
+              break;
+            case 'medium':
+              severityColor = '#f59e0b'; // yellow/amber
+              iconType = 'warning';
+              break;
+            case 'low':
+              severityColor = '#10b981'; // green
+              iconType = 'info';
+              break;
+            default:
+              severityColor = '#3b82f6'; // blue
+              iconType = 'info';
+          }
+          
+          // Override icon based on type if it's more specific
+          if (type === 'accident') {
+            iconType = 'error';
+            severityColor = '#ef4444';
+          } else if (type === 'traffic') {
+            iconType = 'warning';
+            severityColor = '#f59e0b';
+          } else if (type === 'clear') {
+            iconType = 'info';
+            severityColor = '#10b981';
+          }
           
           return (
             <Marker 
-              key={`route-alert-${index}`}
+              key={`route-alert-${alert._id || alert.id || index}`}
               position={alertPos}
-              icon={pulseIcon('#f59e0b', alertIcon, false)}
+              icon={pulseIcon(severityColor, iconType, false)}
               eventHandlers={{
                 click: () => setSelectedMarker(`alert-${index}`),
                 popupopen: () => setSelectedMarker(`alert-${index}`),
@@ -526,25 +572,68 @@ export function MapView({ routePath, startPoint, endPoint, routeAlerts }: {
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ duration: 0.2 }}
                 >
-                  <div className="font-semibold text-white text-sm mb-1">
-                    {alertType === 'jam' ? '🚗 Traffic Jam' : alertType === 'accident' ? '⚠️ Accident' : 'ℹ️ Route Alert'}
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className={`w-3 h-3 rounded-full`} style={{ backgroundColor: severityColor }}></div>
+                    <div className="font-semibold text-white text-sm capitalize">
+                      {type} Alert
+                    </div>
+                    <div className={`text-xs px-2 py-0.5 rounded-full uppercase`} style={{ 
+                      backgroundColor: `${severityColor}20`, 
+                      color: severityColor 
+                    }}>
+                      {severity}
+                    </div>
                   </div>
-                  <div className="text-xs text-gray-300 mb-1">
-                    {alert.message || alert.description || 'Alert on your route'}
+                  
+                  <div className="text-xs text-gray-300 mb-2">
+                    {alert.message || alert.text || 'Alert on your route'}
                   </div>
-                  <div className="text-xs text-orange-400">
-                    ETA Impact: {alert.delay || '+5 min'}
-                  </div>
-                  <div className="mt-2 pt-2 border-t border-white/10">
-                    <button className="w-full bg-orange-500/20 hover:bg-orange-500/30 text-orange-400 text-xs px-2 py-1 rounded transition-colors">
+                  
+                  {/* Affected route information */}
+                  {alert.location && (
+                    <div className="flex items-center gap-1 text-xs text-gray-400 mb-1">
+                      <span className="material-symbols-outlined text-[10px]">location_on</span>
+                      <span>{alert.location}</span>
+                    </div>
+                  )}
+                  
+                  {/* Reporter information */}
+                  {alert.reportedBy?.email && (
+                    <div className="flex items-center gap-1 text-xs text-gray-400 mb-2">
+                      <span className="material-symbols-outlined text-[10px]">person</span>
+                      <span>Reported by {alert.reportedBy.email}</span>
+                    </div>
+                  )}
+                  
+                  {/* Timestamp */}
+                  {alert.timeStamp || alert.createdAt && (
+                    <div className="flex items-center gap-1 text-xs text-gray-500 mb-2">
+                      <span className="material-symbols-outlined text-[10px]">schedule</span>
+                      <span>{new Date(alert.timeStamp || alert.createdAt).toLocaleString()}</span>
+                    </div>
+                  )}
+                  
+                  {/* ETA Impact if available */}
+                  {alert.delay && (
+                    <div className="flex items-center gap-1 text-xs" style={{ color: severityColor }}>
+                      <span className="material-symbols-outlined text-[10px]">timer</span>
+                      <span>ETA Impact: {alert.delay}</span>
+                    </div>
+                  )}
+                  
+                  <div className="mt-2 pt-2 border-t border-white/10 flex gap-2">
+                    <button className="flex-1 bg-white/10 hover:bg-white/20 text-white text-xs px-2 py-1 rounded transition-colors">
                       View Details
+                    </button>
+                    <button className="flex-1 bg-white/10 hover:bg-white/20 text-white text-xs px-2 py-1 rounded transition-colors">
+                      Share
                     </button>
                   </div>
                 </motion.div>
               </Popup>
             </Marker>
           );
-        })}
+        }).filter(Boolean)}
       </MapContainer>
       
       {/* CONNECTED TO BACKEND: Map legend with live count */}

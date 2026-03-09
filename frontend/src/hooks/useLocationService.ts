@@ -58,15 +58,10 @@ export const useLocationService = (): UseLocationServiceReturn => {
 
     newSocket.on('connect', () => {
       console.log('Connected to backend Socket.io server');
-      // Removed toast to reduce notification spam
     });
 
     newSocket.on('disconnect', () => {
       console.log('Disconnected from Socket.io server');
-      // Only show disconnect toast if it wasn't a page refresh
-      if (document.visibilityState === 'visible') {
-        toast.error('Real-time updates disconnected');
-      }
     });
 
     // CONNECTED TO BACKEND: Listen for real-time location updates
@@ -78,8 +73,6 @@ export const useLocationService = (): UseLocationServiceReturn => {
     newSocket.on('error', (err: any) => {
       console.error('Socket error:', err);
       setError('Connection error');
-      // Only show socket error toast if it's a persistent issue
-      // Removed to reduce notification spam
     });
 
     setSocket(newSocket);
@@ -98,8 +91,19 @@ export const useLocationService = (): UseLocationServiceReturn => {
       const response = await locationAPI.getNearbyBuses(lat, lng);
       
       if (response.data.success) {
-        setBuses(response.data.buses || []);
-        console.log('Fetched nearby buses:', response.data.buses);
+        // Transform backend data to match frontend Bus interface
+        const transformedBuses = (response.data.buses || []).map((bus: any) => ({
+          vehicleId: bus.vehicleId || `bus-${bus._id}`,
+          latitude: bus.location?.coordinates?.[1] || bus.latitude || lat,
+          longitude: bus.location?.coordinates?.[0] || bus.longitude || lng,
+          eta: bus.eta || 'Calculating...',
+          route: bus.route || 'Unknown',
+          crowdLevel: bus.crowdLevel || 'medium',
+          type: bus.type || 'bus'
+        }));
+        
+        setBuses(transformedBuses);
+        console.log('Fetched nearby buses:', transformedBuses);
       } else {
         throw new Error('Failed to fetch buses');
       }
@@ -151,7 +155,6 @@ export const useLocationService = (): UseLocationServiceReturn => {
       
       if (!navigator.geolocation) {
         console.error('❌ Geolocation not supported');
-        toast.error('Geolocation is not supported by your browser');
         resolve(DEFAULT_LOCATION);
         return;
       }
@@ -165,11 +168,6 @@ export const useLocationService = (): UseLocationServiceReturn => {
           ];
           console.log('✅ User location obtained:', location);
           setUserLocation(location);
-          // Only show location success toast on first load, not on refresh
-          if (!sessionStorage.getItem('locationToastShown')) {
-            toast.success('Location detected! 📍');
-            sessionStorage.setItem('locationToastShown', 'true');
-          }
           resolve(location);
         },
         (error) => {
@@ -192,7 +190,7 @@ export const useLocationService = (): UseLocationServiceReturn => {
               break;
           }
           
-          toast.error(`${errorMessage}. Using default location (Chandigarh)`, { icon: '⚠️' });
+          console.log(`Using default location (Chandigarh) due to: ${errorMessage}`);
           setUserLocation(DEFAULT_LOCATION);
           resolve(DEFAULT_LOCATION);
         },

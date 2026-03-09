@@ -131,6 +131,14 @@ export const alertsAPI = {
   upvoteAlert: (alertId: string) =>
     api.patch(`/api/alerts/${alertId}/upvote`),
 
+  // CONNECTED TO BACKEND: Get nearby alerts within radius
+  getNearbyAlerts: (lat: number, long: number, radius: number = 8) =>
+    api.get(`/api/alerts/nearby?lat=${lat}&long=${long}&radius=${radius}`),
+
+  // CONNECTED TO BACKEND: Delete own alert
+  deleteAlert: (alertId: string) =>
+    api.delete(`/api/alerts/${alertId}`),
+
   // CONNECTED TO BACKEND: Get route-specific alerts
   getRouteAlerts: (startLat: number, startLong: number, endLat: number, endLong: number) =>
     api.get(`/api/alerts/route?startLat=${startLat}&startLong=${startLong}&endLat=${endLat}&endLong=${endLong}`),
