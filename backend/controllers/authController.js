@@ -4,7 +4,7 @@ const jwt = require('jsonwebtoken');
 
 exports.signup = async (req, res) => {
     try{
-        const {email, password} = req.body;
+        const {email, password, name} = req.body;
 
         const existingUser = await User.findOne({email});
         if(existingUser){
@@ -13,7 +13,7 @@ exports.signup = async (req, res) => {
 
         const hashedPassword = await bcrypt.hash(password, 10);
 
-        const user = new User({email, password: hashedPassword});
+        const user = new User({name: name || '', email, password: hashedPassword});
         await user.save();
 
         const token = jwt.sign({id: user._id}, process.env.JWT_SECRET, {expiresIn: '7d'});
@@ -28,7 +28,16 @@ exports.signup = async (req, res) => {
         res.status(201).json({
             success: true,
             message: "Signup successful",
-            user: {id: user._id, email: user.email}
+            user: {
+                id: user._id,
+                name: user.name || '',
+                email: user.email,
+                points: user.points || 0,
+                carbonSaved: user.carbonSaved || 0,
+                badges: user.badges || [],
+                honestyScore: user.honestyScore || 100,
+                favourites: user.favourites || []
+            }
         });
     }
     catch(err){
@@ -62,7 +71,16 @@ exports.login = async (req, res) => {
         res.json({
             success: true,
             message: "Login Successful",
-            user: {id: user._id, email: user.email, points: user.points}
+            user: {
+                id: user._id,
+                name: user.name || '',
+                email: user.email,
+                points: user.points || 0,
+                carbonSaved: user.carbonSaved || 0,
+                badges: user.badges || [],
+                honestyScore: user.honestyScore || 100,
+                favourites: user.favourites || []
+            }
         });
     } catch(err){
         res.status(500).json({success: false, message: err.message});
@@ -81,11 +99,13 @@ exports.getMe = async (req, res) => {
       success: true,
       user: {
         id: user._id,
+        name: user.name || '',
         email: user.email,
         points: user.points || 0,
         carbonSaved: user.carbonSaved || 0,
         badges: user.badges || [],
-        honestyScore: user.honestyScore || 100
+        honestyScore: user.honestyScore || 100,
+        favourites: user.favourites || []
       }
     });
   } catch (error) {

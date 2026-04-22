@@ -1,6 +1,6 @@
 const Report = require('../models/Report');
 const User = require('../models/User');
-const { awardPoinst } = require('../utils/gamification');   //? Gamification: Award points for reporting
+const { awardPoints } = require('../utils/gamification');   //? Gamification: Award points for reporting
 
 exports.createAlert = async (req, res) => {
     const {message, lat, long} = req.body;
@@ -15,7 +15,7 @@ exports.createAlert = async (req, res) => {
 
     await alert.save();
 
-    await awardPoinst(userId, 10);  //? 10 points for alert 
+    await awardPoints(userId, 10);  //? 10 points for alert 
 
     //? Reduce honesty score slightly for every report
     await User.findByIdAndUpdate(userId, {$inc: {honestyScore: -2}});

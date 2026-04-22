@@ -1,6 +1,10 @@
 const mongoose = require('mongoose');
 
 const userSchema = new mongoose.Schema({
+    name: {
+        type: String,
+        default: ''
+    },
     email : {
         type: String,
         required: true,
@@ -10,6 +14,7 @@ const userSchema = new mongoose.Schema({
         type: String,
         required: true
     },
+    favourites: [{type: String}],
     points: {
         type: Number,
         default: 0

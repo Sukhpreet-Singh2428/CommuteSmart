@@ -113,9 +113,10 @@ function DashboardContent() {
   const { routeData, setStartPoint, setEndPoint, setRoutePath, clearRoute: clearContextRoute } = useRoute();
   
   const [selectedMode, setSelectedMode] = useState<'bus' | 'metro' | 'bike'>('bus');
-  const [co2Offset] = useState(12.8);
-  const [rewardTokens] = useState(450);
-  const [weeklyProgress] = useState(75);
+  // CONNECTED TO BACKEND: Use real user data instead of hardcoded values
+  const co2Offset = user?.carbonSaved || 0;
+  const rewardTokens = user?.points || 0;
+  const weeklyProgress = Math.min(100, Math.floor((user?.points || 0) / 5));
   const [isCalculatingRoute, setIsCalculatingRoute] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [animatedStats, setAnimatedStats] = useState({ co2: 0, tokens: 0, progress: 0 });

@@ -66,6 +66,12 @@ app.use('/api/alerts', alertRoutes);
 const routeRoutes = require('./routes/routes');
 app.use('/api/routes', routeRoutes);
 
+const leaderboardRoutes = require('./routes/leaderboard');
+app.use('/api/leaderboard', leaderboardRoutes);
+
+const userRoutes = require('./routes/userRoutes');
+app.use('/api/users', userRoutes);
+
 app.get('/', (req, res) => {
   res.json({ message: "CommuteSmart Backend is Running!" });
 });

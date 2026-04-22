@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 
 export function Register() {
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [terms, setTerms] = useState(false);
@@ -21,7 +22,7 @@ export function Register() {
     }
     setLoading(true);
     try {
-      await register(email, password);
+      await register(email, password, name);
       setShowConfetti(true);
       toast.success('Green account created! Welcome to CommuteSmart.');
       setTimeout(() => setShowConfetti(false), 2500);
@@ -57,6 +58,17 @@ export function Register() {
           </div>
           
           <form onSubmit={handleSubmit} className="space-y-5">
+            <div>
+              <label className="block text-sm font-medium text-gray-400 mb-2">Full Name</label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full bg-surface-dark/50 border border-white/10 rounded-xl px-4 py-3.5 text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
+                placeholder="Your full name"
+              />
+            </div>
+            
             <div>
               <label className="block text-sm font-medium text-gray-400 mb-2">Email Address</label>
               <input

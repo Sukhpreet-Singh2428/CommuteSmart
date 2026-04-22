@@ -212,31 +212,34 @@ export function Alerts() {
     setIsLoading(true);
     try {
       const response = await alertsAPI.getAlerts();
-      if (response.data.success && response.data.alerts) {
-        // Append new alerts to existing mock data
+      if (response.data.success && response.data.alerts && response.data.alerts.length > 0) {
+        // CONNECTED TO BACKEND: Use real backend alerts when available
         const backendAlerts = response.data.alerts.map((alert: any) => ({
           ...alert,
           id: alert._id,
           title: alert.message || 'Community Alert',
           description: alert.message || 'No description available',
-          location: 'Community Report',
-          timeAgo: 'Just now',
-          reporter: 'Community User',
-          avatar: 'CU',
-          type: 'community',
-          icon: 'report',
-          iconColor: 'text-blue-500',
-          verified: false,
+          location: alert.location || 'Community Report',
+          timeAgo: formatTimeAgo(alert.timeStamp || alert.createdAt || new Date().toISOString()),
+          reporter: alert.reportedBy || { email: 'Community User' },
+          avatar: alert.reportedBy?.email?.charAt(0)?.toUpperCase() || 'CU',
+          type: alert.type || 'community',
+          icon: getAlertIcon(alert.type || 'community'),
+          iconColor: getAlertIconColor(alert.type || 'community'),
+          verified: (alert.upvotes || 0) >= 5,
           upvotes: alert.upvotes || 0,
           comments: 0,
           liked: false,
-          createdAt: alert.timeStamp || new Date()
+          createdAt: alert.timeStamp || alert.createdAt || new Date().toISOString()
         }));
         
-        // Combine mock data with backend alerts
-        setAlerts([...punjabAlerts, ...backendAlerts]);
+        setAlerts(backendAlerts);
+      } else {
+        // No backend alerts yet — use mock data as seed content
+        setAlerts(punjabAlerts);
       }
     } catch (error: any) {
+      console.warn('Failed to fetch alerts from backend, using mock data:', error.message);
       // Keep existing mock data if API fails
       setAlerts(punjabAlerts);
     } finally {

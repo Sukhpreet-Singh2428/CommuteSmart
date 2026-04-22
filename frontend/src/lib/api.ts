@@ -100,8 +100,8 @@ export const authAPI = {
   login: (email: string, password: string) =>
     api.post('/api/auth/login', { email, password }),
   
-  register: (email: string, password: string) =>
-    api.post('/api/auth/signup', { email, password }),
+  register: (email: string, password: string, name?: string) =>
+    api.post('/api/auth/signup', { email, password, name }),
   
   logout: () =>
     api.post('/api/auth/logout'),
@@ -148,7 +148,35 @@ export const alertsAPI = {
     api.post('/api/alerts/route', { startPoint, endPoint, startLat, startLong, endLat, endLong, message, type, severity }),
 };
 
+export const leaderboardAPI = {
+  // CONNECTED TO BACKEND: Leaderboard endpoint
+  getLeaderboard: (limit: number = 50) =>
+    api.get(`/api/leaderboard?limit=${limit}`),
+};
+
+export const userAPI = {
+  // CONNECTED TO BACKEND: User favourites endpoints
+  getFavourites: () =>
+    api.get('/api/users/me/favourites'),
+
+  addFavourite: (routeId: string) =>
+    api.post('/api/users/me/favourites', { routeId }),
+
+  removeFavourite: (routeId: string) =>
+    api.delete(`/api/users/me/favourites/${routeId}`),
+};
+
+export const routesAPI = {
+  // CONNECTED TO BACKEND: Route suggestion endpoints
+  suggestRoutes: (startLat: number, startLong: number, endLat: number, endLong: number) =>
+    api.post('/api/routes/suggest', { startLat, startLong, endLat, endLong }),
+
+  calculateCarbon: (distance: number, mode: string) =>
+    api.post('/api/routes/calculate-carbon', { distance, mode }),
+};
+
 // Export backend URL for Socket.io connection
 export const getSocketUrl = () => getBackendUrl();
 
 export default api;
+
