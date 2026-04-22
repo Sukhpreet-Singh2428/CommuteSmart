@@ -2,6 +2,46 @@ const Report = require('../models/Report');
 const User = require('../models/User');
 const { awardPoints } = require('../utils/gamification');   //? Gamification: Award points for reporting
 
+// Badge checking function — called after createAlert and upvoteAlert (verification)
+async function checkAndAwardBadges(userId, io) {
+    try {
+        const user = await User.findById(userId);
+        if (!user) return;
+
+        const alertCount = await Report.countDocuments({ reportedBy: userId, type: 'alert' });
+        const verifiedCount = await Report.countDocuments({ reportedBy: userId, type: 'alert', upvotes: { $gte: 5 } });
+
+        const badgesToAward = [];
+
+        if (alertCount >= 1 && !user.badges.includes('First Report'))
+            badgesToAward.push('First Report');
+
+        if (alertCount >= 10 && !user.badges.includes('Reliable Reporter'))
+            badgesToAward.push('Reliable Reporter');
+
+        if (alertCount >= 50 && !user.badges.includes('Community Hero'))
+            badgesToAward.push('Community Hero');
+
+        if (verifiedCount >= 5 && !user.badges.includes('Verified Voice'))
+            badgesToAward.push('Verified Voice');
+
+        if ((user.carbonSaved || 0) >= 1 && !user.badges.includes('Green Guardian'))
+            badgesToAward.push('Green Guardian');
+
+        if ((user.carbonSaved || 0) >= 10 && !user.badges.includes('Eco Champion'))
+            badgesToAward.push('Eco Champion');
+
+        if (badgesToAward.length > 0) {
+            await User.findByIdAndUpdate(userId, { $push: { badges: { $each: badgesToAward } } });
+            if (io) {
+                io.to(`user:${userId}`).emit('badge:earned', { badges: badgesToAward });
+            }
+        }
+    } catch (err) {
+        console.error('Error checking badges:', err);
+    }
+}
+
 exports.createAlert = async (req, res) => {
     const {message, lat, long} = req.body;
     const userId = req.user.id;
@@ -17,18 +57,55 @@ exports.createAlert = async (req, res) => {
 
     await awardPoints(userId, 10);  //? 10 points for alert 
 
-    //? Reduce honesty score slightly for every report
-    await User.findByIdAndUpdate(userId, {$inc: {honestyScore: -2}});
+    //? Carbon saved: each alert = 0.01 kg CO2
+    await User.findByIdAndUpdate(userId, {
+        $inc: { honestyScore: -2, carbonSaved: 0.01 },
+        $set: { lastActiveDate: new Date() }
+    });
 
     const io = req.app.get('io');
-    io.emit('newAlert', alert);
+    
+    // Populate reportedBy for the socket event
+    const populatedAlert = await Report.findById(alert._id).populate('reportedBy', 'email name');
+    io.emit('newAlert', populatedAlert);
 
-    res.json({success: true, alert});
+    // Get updated user for points event
+    const updatedUser = await User.findById(userId).select('points carbonSaved badges');
+    io.to(`user:${userId}`).emit('points:earned', {
+        points: 10,
+        reason: 'Alert created',
+        total: updatedUser.points
+    });
+
+    // Check and award badges
+    await checkAndAwardBadges(userId, io);
+
+    res.json({success: true, alert: populatedAlert});
 };
 
 exports.getAlerts = async (req, res) => {
-    const alerts = await Report.find({type: 'alert'}).sort({timeStamp: -1}).limit(20);
-    res.json({success: true, alerts});
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const skip = (page - 1) * limit;
+
+    const alerts = await Report.find({type: 'alert'})
+        .populate('reportedBy', 'email name')
+        .sort({timeStamp: -1})
+        .skip(skip)
+        .limit(limit);
+    
+    const total = await Report.countDocuments({type: 'alert'});
+    
+    res.json({
+        success: true, 
+        alerts,
+        pagination: {
+            page,
+            limit,
+            total,
+            pages: Math.ceil(total / limit)
+        }
+    });
 };
 
 exports.upvoteAlert = async (req, res) => {
@@ -40,9 +117,42 @@ exports.upvoteAlert = async (req, res) => {
     alert.upvotes += 1;
     await alert.save();
 
-    //? if many upvotes, increase reporter's honesty score
-    if (alert.upvotes > 5){
+    const io = req.app.get('io');
+
+    //? if many upvotes, increase reporter's honesty score + award verification bonus
+    if (alert.upvotes === 5) {
+        // Alert just got verified! Award bonus to reporter
+        const reporterId = alert.reportedBy.toString();
+        await User.findByIdAndUpdate(reporterId, {
+            $inc: { honestyScore: 5, carbonSaved: 0.04 }
+        });
+        await awardPoints(reporterId, 25); // 25 points for verification
+
+        const updatedReporter = await User.findById(reporterId).select('points');
+        io.to(`user:${reporterId}`).emit('points:earned', {
+            points: 25,
+            reason: 'Alert verified by community',
+            total: updatedReporter.points
+        });
+
+        // Check badges for reporter
+        await checkAndAwardBadges(reporterId, io);
+    } else if (alert.upvotes > 5) {
         await User.findByIdAndUpdate(alert.reportedBy, {$inc: {honestyScore: 5}});
+    }
+
+    // Award verifier points (if logged in)
+    if (req.user && req.user.id) {
+        const verifierId = req.user.id;
+        if (verifierId !== alert.reportedBy.toString()) {
+            await awardPoints(verifierId, 5); // 5 points for verifying
+            const updatedVerifier = await User.findById(verifierId).select('points');
+            io.to(`user:${verifierId}`).emit('points:earned', {
+                points: 5,
+                reason: 'Verified an alert',
+                total: updatedVerifier.points
+            });
+        }
     }
 
     res.json({success: true, alert});
@@ -69,7 +179,7 @@ exports.getNearbyAlerts = async (req, res) => {
                 }
             }
         })
-        .populate('reportedBy', 'email')
+        .populate('reportedBy', 'email name')
         .sort({timeStamp: -1})
         .limit(50);
 
@@ -139,7 +249,7 @@ exports.getRouteAlerts = async (req, res) => {
                 }
             }))
         })
-        .populate('reportedBy', 'email')
+        .populate('reportedBy', 'email name')
         .sort({timeStamp: -1})
         .limit(50);
 

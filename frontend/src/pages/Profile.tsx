@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { leaderboardAPI } from '../lib/api';
+import { PageNavbar } from '../components/PageNavbar';
+import { useUserStats } from '../hooks/useUserStats';
 
 const achievements = [
   { title: 'Smog Fighter', icon: 'workspace_premium', description: 'Avoided 50kg+ CO2', progress: 100, unlocked: true },
@@ -39,6 +41,10 @@ export function Profile() {
   const [activeTab, setActiveTab] = useState<'overview' | 'achievements' | 'activity' | 'settings'>('overview');
   const [isLoading, setIsLoading] = useState(true);
   const [leaderboardData, setLeaderboardData] = useState<Array<{ rank: number; name: string; xp: number; trend: string; highlight?: boolean }>>([]);
+  
+  // CONNECTED TO BACKEND: Fetch user stats from /api/users/me/stats
+  const { stats: userStats, loading: statsLoading, pointsAnimation } = useUserStats();
+  
   const [animatedStats, setAnimatedStats] = useState({
     co2: 0,
     trees: 0,
@@ -93,14 +99,14 @@ export function Profile() {
 
   useEffect(() => {
     if (!isLoading) {
-      // CONNECTED TO BACKEND: Use real user data for target stats
+      // CONNECTED TO BACKEND: Use real user stats from API
       const targetStats = {
-        co2: user?.carbonSaved || 0,
-        trees: (user?.carbonSaved || 0) / 3, // Approx: 1 tree absorbs ~3kg CO2/year
-        trips: Math.floor((user?.points || 0) / 10), // Approx: 10 points per trip
-        distance: Math.floor((user?.carbonSaved || 0) * 100), // Approx: 0.01kg CO2 per km
-        level: Math.floor((user?.points || 0) / 100) + 1,
-        xp: user?.points || 0
+        co2: userStats?.carbonSaved || user?.carbonSaved || 0,
+        trees: userStats?.treesEquivalent || 0,
+        trips: userStats?.totalTrips || 0,
+        distance: userStats?.totalDistance || 0,
+        level: userStats?.level || Math.floor((user?.points || 0) / 1000) + 1,
+        xp: userStats?.currentLevelXP || (user?.points || 0) % 1000
       };
       
       const duration = 2000;
@@ -127,7 +133,7 @@ export function Profile() {
       
       return () => clearInterval(interval);
     }
-  }, [isLoading, user?.carbonSaved, user?.points]);
+  }, [isLoading, userStats, user?.carbonSaved, user?.points]);
 
   const handleSettingToggle = (label: string) => {
     setSettings(prev => ({ ...prev, [label]: !prev[label] }));
@@ -136,49 +142,23 @@ export function Profile() {
 
   return (
     <div className="min-h-screen w-full flex flex-col bg-[#0a1411]">
-      {/* Navigation */}
-      <nav className="h-16 flex items-center justify-between px-6 border-b border-primary/20 bg-[#0a1411]/80 backdrop-blur-md z-50">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-            <span className="material-icons text-white text-lg">directions_bus</span>
-          </div>
-          <span className="font-bold text-xl tracking-tight text-white">CommuteSmart</span>
-        </div>
-        <div className="hidden md:flex items-center gap-8">
-          <Link className="text-gray-400 hover:text-white transition-colors text-sm font-medium" to="/dashboard">Dashboard</Link>
-          <Link className="text-gray-400 hover:text-white transition-colors text-sm font-medium" to="/alerts">Community</Link>
-          <Link className="text-[#0fb880] border-b-2 border-[#0fb880] h-16 flex items-center text-sm font-medium" to="/profile">Profile</Link>
-        </div>
-        <div className="flex items-center gap-4">
-          <div className="flex flex-col items-end">
-            <span className="text-[10px] text-gray-400 font-medium uppercase tracking-wider">Punjab Eco-Rank</span>
-            <span className="text-sm font-bold text-[#0fb880]">#142 Chandigarh</span>
-          </div>
-          <div className="h-9 w-9 rounded-full border-2 border-[#0fb880]/30 p-0.5">
-            <div className="w-full h-full rounded-full bg-[#0fb880]/30 flex items-center justify-center text-white font-bold text-sm">
-              U
-            </div>
-          </div>
-        </div>
-      </nav>
+      {/* UNIFIED: Shared PageNavbar component */}
+      <PageNavbar activePage="profile" />
 
-      {/* Mobile Navigation */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 px-2 pb-safe glass-panel border-t border-white/10">
-        <div className="flex items-center justify-around h-16">
-          <Link to="/dashboard" className="flex flex-col items-center justify-center flex-1 py-2 rounded-xl text-gray-400">
-            <span className="material-symbols-outlined text-lg">dashboard</span>
-            <span className="text-xs mt-0.5">Dashboard</span>
-          </Link>
-          <Link to="/alerts" className="flex flex-col items-center justify-center flex-1 py-2 rounded-xl text-gray-400">
-            <span className="material-symbols-outlined text-lg">forum</span>
-            <span className="text-xs mt-0.5">Community</span>
-          </Link>
-          <Link to="/profile" className="flex flex-col items-center justify-center flex-1 py-2 rounded-xl text-[#0fb880]">
-            <span className="material-symbols-outlined text-lg">person</span>
-            <span className="text-xs mt-0.5">Profile</span>
-          </Link>
-        </div>
-      </nav>
+      {/* Floating Points Animation */}
+      <AnimatePresence>
+        {pointsAnimation && (
+          <motion.div
+            className="fixed top-20 right-8 z-[200] text-[#0fb880] font-black text-lg"
+            initial={{ opacity: 1, y: 0 }}
+            animate={{ opacity: 0, y: -40 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 1.5 }}
+          >
+            +{pointsAnimation.points} pts
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Main Content */}
       <div className="flex-1 grid grid-cols-12 gap-4 p-4 pb-20 md:pb-4">
@@ -199,14 +179,14 @@ export function Profile() {
               
               <div className="w-full space-y-2">
                 <div className="flex justify-between text-xs font-bold text-gray-400 uppercase tracking-wider">
-                  <span>Level {animatedStats.level}</span>
-                  <span>{animatedStats.xp.toLocaleString()} / 3,000 XP</span>
+                  <span>Level {userStats?.level || animatedStats.level}</span>
+                  <span>{userStats?.currentLevelXP || animatedStats.xp} / 1,000 XP</span>
                 </div>
                 <div className="w-full bg-white/5 rounded-full h-2 overflow-hidden">
                   <motion.div 
                     className="h-full bg-gradient-to-r from-[#0fb880] to-[#0ea5e9] rounded-full shadow-[0_0_8px_rgba(15,184,128,0.4)]"
                     initial={{ width: 0 }}
-                    animate={{ width: '95%' }}
+                    animate={{ width: `${userStats?.levelProgressPct || 0}%` }}
                     transition={{ delay: 1, duration: 1, ease: 'easeOut' }}
                   ></motion.div>
                 </div>
@@ -250,7 +230,7 @@ export function Profile() {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.4 }}
                 >
-                  #12
+                  #{userStats?.cleanAirRank || '—'}
                 </motion.span>
               </div>
               <div className="flex items-center justify-between">
@@ -261,7 +241,7 @@ export function Profile() {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.5 }}
                 >
-                  A+
+                  {userStats?.greenScore || 'C'}
                 </motion.span>
               </div>
             </div>
@@ -303,7 +283,7 @@ export function Profile() {
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: 0.8 }}
                 >
-                  47
+                  {userStats?.totalReports || 0}
                 </motion.span>
               </div>
               <div className="flex justify-between">
@@ -382,7 +362,7 @@ export function Profile() {
                   </div>
                   <div className="flex items-center gap-1 text-xs text-yellow-500">
                     <span className="material-symbols-outlined text-sm">check_circle</span>
-                    <span>45 gallons fuel equivalent</span>
+                    <span>{((userStats?.carbonSaved || 0) / 8.91).toFixed(1)} gallons fuel equivalent</span>
                   </div>
                 </div>
               </div>
@@ -393,16 +373,23 @@ export function Profile() {
                   Monthly Progress
                 </h3>
                 <div className="space-y-3">
-                  {['Week 1', 'Week 2', 'Week 3', 'Week 4'].map((week, index) => (
-                    <div key={week} className="flex items-center gap-3">
-                      <span className="text-xs text-gray-400 w-12">{week}</span>
+                  {(userStats?.weeklyProgress || [
+                    { week: 'Week 1', pct: 0 },
+                    { week: 'Week 2', pct: 0 },
+                    { week: 'Week 3', pct: 0 },
+                    { week: 'Week 4', pct: 0 }
+                  ]).map((weekData, index) => (
+                    <div key={weekData.week} className="flex items-center gap-3">
+                      <span className="text-xs text-gray-400 w-12">{weekData.week}</span>
                       <div className="flex-1 bg-white/5 rounded-full h-2 overflow-hidden">
-                        <div 
+                        <motion.div 
                           className="h-full bg-gradient-to-r from-[#0fb880] to-[#0ea5e9] rounded-full"
-                          style={{ width: `${75 + index * 5}%` }}
-                        ></div>
+                          initial={{ width: 0 }}
+                          animate={{ width: `${Math.max(weekData.pct, weekData.pct > 0 ? 4 : 0)}%` }}
+                          transition={{ delay: 0.3 + index * 0.1, duration: 0.8, ease: 'easeOut' }}
+                        ></motion.div>
                       </div>
-                      <span className="text-xs text-gray-400 w-8 text-right">{75 + index * 5}%</span>
+                      <span className="text-xs text-gray-400 w-8 text-right">{weekData.pct}%</span>
                     </div>
                   ))}
                 </div>
@@ -579,22 +566,39 @@ export function Profile() {
               <div className="text-4xl font-black text-white mb-2 flex items-center gap-2">
                 <motion.span 
                   initial={{ rotate: 0 }}
-                  animate={{ rotate: [0, 10, -10, 0] }}
+                  animate={{ rotate: (userStats?.currentStreak || 0) > 0 ? [0, 10, -10, 0] : 0 }}
                   transition={{ duration: 0.5, delay: 1.2 }}
+                  style={{ filter: (userStats?.currentStreak || 0) >= 7 ? 'drop-shadow(0 0 8px #f59e0b)' : 'none' }}
                 >
-                  7 🔥
+                  {userStats?.currentStreak || 0} {(userStats?.currentStreak || 0) > 0 ? '🔥' : '💤'}
                 </motion.span>
               </div>
-              <p className="text-xs text-gray-400 mb-3">Days of green commuting</p>
-              <div className="w-full bg-white/5 rounded-full h-2 overflow-hidden">
-                <motion.div 
-                  className="h-full bg-gradient-to-r from-[#0fb880] to-orange-500 rounded-full"
-                  initial={{ width: 0 }}
-                  animate={{ width: '70%' }}
-                  transition={{ delay: 1.3, duration: 1, ease: 'easeOut' }}
-                ></motion.div>
-              </div>
-              <p className="text-xs text-gray-400 mt-2">3 days to next milestone</p>
+              <p className="text-xs text-gray-400 mb-3">
+                {(userStats?.currentStreak || 0) === 0 
+                  ? 'Start your streak today!' 
+                  : 'Days of green commuting'}
+              </p>
+              {(() => {
+                const streak = userStats?.currentStreak || 0;
+                const nextMilestone = streak < 7 ? 7 : streak < 30 ? 30 : 100;
+                const daysToNext = nextMilestone - streak;
+                const pct = Math.min(100, (streak / nextMilestone) * 100);
+                return (
+                  <>
+                    <div className="w-full bg-white/5 rounded-full h-2 overflow-hidden">
+                      <motion.div 
+                        className="h-full bg-gradient-to-r from-[#0fb880] to-orange-500 rounded-full"
+                        initial={{ width: 0 }}
+                        animate={{ width: `${pct}%` }}
+                        transition={{ delay: 1.3, duration: 1, ease: 'easeOut' }}
+                      ></motion.div>
+                    </div>
+                    <p className="text-xs text-gray-400 mt-2">
+                      {streak > 0 ? `${daysToNext} days to next milestone` : 'Report an alert to start!'}
+                    </p>
+                  </>
+                );
+              })()}
             </div>
           </div>
 

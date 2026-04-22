@@ -5,6 +5,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { alertsAPI, getSocketUrl } from '../lib/api';
 import { io, Socket } from 'socket.io-client';
+import { PageNavbar } from '../components/PageNavbar';
+import { useLiveStats, useTrendingAreas, useTopContributors } from '../hooks/useLiveStats';
+import type { LeaderboardEntry, TrendingArea as TrendingAreaType } from '../types';
 
 const punjabAlerts = [
   {
@@ -145,6 +148,11 @@ export function Alerts() {
   const [upvotedAlerts, setUpvotedAlerts] = useState<Set<string>>(new Set());
   const [socket, setSocket] = useState<Socket | null>(null);
   const [showReportModal, setShowReportModal] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [hasMorePages, setHasMorePages] = useState(true);
+  const [challengeJoined, setChallengeJoined] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('commuteSmart_challenge') || 'false'); } catch { return false; }
+  });
   const [newAlert, setNewAlert] = useState({ 
     message: '', 
     lat: 30.73, 
@@ -153,6 +161,11 @@ export function Alerts() {
     severity: 'medium',
     location: ''
   }); // Default Chandigarh
+
+  // CONNECTED TO BACKEND: Live data hooks
+  const { stats: liveStats, loading: statsLoading } = useLiveStats();
+  const { areas: trendingAreas, loading: trendingLoading } = useTrendingAreas();
+  const { contributors: topContributors, loading: contributorsLoading } = useTopContributors(3);
 
   // CONNECTED TO BACKEND: Initialize Socket.io for real-time alerts
   useEffect(() => {
@@ -207,13 +220,12 @@ export function Alerts() {
     };
   }, []);
 
-  // CONNECTED TO BACKEND: Fetch alerts from API
-  const fetchAlerts = async () => {
-    setIsLoading(true);
+  // CONNECTED TO BACKEND: Fetch alerts from API with pagination
+  const fetchAlerts = async (page: number = 1, append: boolean = false) => {
+    if (!append) setIsLoading(true);
     try {
-      const response = await alertsAPI.getAlerts();
+      const response = await alertsAPI.getAlerts(page);
       if (response.data.success && response.data.alerts && response.data.alerts.length > 0) {
-        // CONNECTED TO BACKEND: Use real backend alerts when available
         const backendAlerts = response.data.alerts.map((alert: any) => ({
           ...alert,
           id: alert._id,
@@ -233,18 +245,29 @@ export function Alerts() {
           createdAt: alert.timeStamp || alert.createdAt || new Date().toISOString()
         }));
         
-        setAlerts(backendAlerts);
+        if (append) {
+          setAlerts(prev => [...prev, ...backendAlerts]);
+        } else {
+          setAlerts(backendAlerts);
+        }
+        setHasMorePages((response.data.pagination?.page || 1) < (response.data.pagination?.pages || 1));
       } else {
-        // No backend alerts yet — use mock data as seed content
-        setAlerts(punjabAlerts);
+        if (!append) setAlerts(punjabAlerts);
+        setHasMorePages(false);
       }
     } catch (error: any) {
       console.warn('Failed to fetch alerts from backend, using mock data:', error.message);
-      // Keep existing mock data if API fails
-      setAlerts(punjabAlerts);
+      if (!append) setAlerts(punjabAlerts);
+      setHasMorePages(false);
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const loadMoreAlerts = () => {
+    const nextPage = currentPage + 1;
+    setCurrentPage(nextPage);
+    fetchAlerts(nextPage, true);
   };
 
   // Load alerts on mount
@@ -356,49 +379,8 @@ export function Alerts() {
 
   return (
     <div className="min-h-screen w-full flex flex-col bg-[#0a1411]">
-      {/* Navigation */}
-      <nav className="h-16 flex items-center justify-between px-6 border-b border-primary/20 bg-[#0a1411]/80 backdrop-blur-md z-50">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-            <span className="material-icons text-white text-lg">directions_bus</span>
-          </div>
-          <span className="font-bold text-xl tracking-tight text-white">CommuteSmart</span>
-        </div>
-        <div className="hidden md:flex items-center gap-8">
-          <Link className="text-gray-400 hover:text-white transition-colors text-sm font-medium" to="/dashboard">Dashboard</Link>
-          <Link className="text-[#0fb880] border-b-2 border-[#0fb880] h-16 flex items-center text-sm font-medium" to="/alerts">Community</Link>
-          <Link className="text-gray-400 hover:text-white transition-colors text-sm font-medium" to="/profile">Profile</Link>
-        </div>
-        <div className="flex items-center gap-4">
-          <div className="flex flex-col items-end">
-            <span className="text-[10px] text-gray-400 font-medium uppercase tracking-wider">Punjab Eco-Rank</span>
-            <span className="text-sm font-bold text-[#0fb880]">#{user?.points || 142} Chandigarh</span>
-          </div>
-          <div className="h-9 w-9 rounded-full border-2 border-[#0fb880]/30 p-0.5">
-            <div className="w-full h-full rounded-full bg-[#0fb880]/30 flex items-center justify-center text-white font-bold text-sm">
-              {user?.email?.charAt(0).toUpperCase() || 'U'}
-            </div>
-          </div>
-        </div>
-      </nav>
-
-      {/* Mobile Navigation */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 px-2 pb-safe glass-panel border-t border-white/10">
-        <div className="flex items-center justify-around h-16">
-          <Link to="/dashboard" className="flex flex-col items-center justify-center flex-1 py-2 rounded-xl text-gray-400">
-            <span className="material-symbols-outlined text-lg">dashboard</span>
-            <span className="text-xs mt-0.5">Dashboard</span>
-          </Link>
-          <Link to="/alerts" className="flex flex-col items-center justify-center flex-1 py-2 rounded-xl text-[#0fb880]">
-            <span className="material-symbols-outlined text-lg">forum</span>
-            <span className="text-xs mt-0.5">Community</span>
-          </Link>
-          <Link to="/profile" className="flex flex-col items-center justify-center flex-1 py-2 rounded-xl text-gray-400">
-            <span className="material-symbols-outlined text-lg">person</span>
-            <span className="text-xs mt-0.5">Profile</span>
-          </Link>
-        </div>
-      </nav>
+      {/* UNIFIED: Shared PageNavbar component */}
+      <PageNavbar activePage="alerts" />
 
       {/* Main Content */}
       <div className="flex-1 grid grid-cols-12 gap-4 p-4 pb-20 md:pb-4">
@@ -410,12 +392,17 @@ export function Alerts() {
               Live Statistics
             </h2>
             <div className="space-y-4">
-              {[
-                { label: 'Active Alerts', value: '24', color: 'text-white', delay: 0 },
-                { label: 'Verified', value: '12', color: 'text-[#0fb880]', delay: 0.1 },
-                { label: 'Contributors', value: '156', color: 'text-white', delay: 0.2 },
-                { label: 'Response Time', value: '2.3m', color: 'text-yellow-500', delay: 0.3 },
-              ].map((stat) => (
+              {(statsLoading ? [
+                { label: 'Active Alerts', value: '—', color: 'text-white', delay: 0 },
+                { label: 'Verified', value: '—', color: 'text-[#0fb880]', delay: 0.1 },
+                { label: 'Contributors', value: '—', color: 'text-white', delay: 0.2 },
+                { label: 'Response Time', value: '—', color: 'text-yellow-500', delay: 0.3 },
+              ] : [
+                { label: 'Active Alerts', value: String(liveStats?.activeAlerts ?? 0), color: 'text-white', delay: 0 },
+                { label: 'Verified', value: String(liveStats?.verifiedAlerts ?? 0), color: 'text-[#0fb880]', delay: 0.1 },
+                { label: 'Contributors', value: String(liveStats?.totalContributors ?? 0), color: 'text-white', delay: 0.2 },
+                { label: 'Response Time', value: `${liveStats?.avgResponseTime ?? 0}m`, color: 'text-yellow-500', delay: 0.3 },
+              ]).map((stat) => (
                 <motion.div 
                   key={stat.label}
                   className="flex items-center justify-between"
@@ -443,9 +430,21 @@ export function Alerts() {
               Top Contributors
             </h2>
             <div className="space-y-4">
-              {topContributors.map((contributor, index) => (
+              {contributorsLoading ? (
+                <div className="space-y-3">
+                  {[1,2,3].map(i => (
+                    <div key={i} className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-white/10 animate-pulse"></div>
+                      <div className="flex-1 space-y-1">
+                        <div className="h-3 bg-white/10 rounded w-20 animate-pulse"></div>
+                        <div className="h-2 bg-white/5 rounded w-14 animate-pulse"></div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (topContributors as LeaderboardEntry[]).map((contributor, index) => (
                 <motion.div 
-                  key={contributor.name} 
+                  key={contributor.userId || index} 
                   className="flex items-center gap-3 group"
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
@@ -454,7 +453,7 @@ export function Alerts() {
                 >
                   <div className="relative">
                     <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-white text-[10px] font-bold border border-white/20">
-                      {contributor.avatar}
+                      {(contributor.name || 'A').substring(0, 2).toUpperCase()}
                     </div>
                     <div className={`absolute -top-1 -right-1 text-[8px] font-bold px-1 rounded shadow-sm ${
                       contributor.rank === 1 ? 'bg-yellow-500 text-black' : 
@@ -465,10 +464,10 @@ export function Alerts() {
                     </div>
                   </div>
                   <div className="flex-1">
-                    <p className="text-sm font-medium text-white">{contributor.name}</p>
-                    <p className="text-xs text-gray-500">{contributor.reports} Reports</p>
+                    <p className={`text-sm font-medium ${contributor.userId === user?.id ? 'text-[#0fb880]' : 'text-white'}`}>{contributor.userId === user?.id ? 'You' : contributor.name}</p>
+                    <p className="text-xs text-gray-500">{contributor.points} pts</p>
                   </div>
-                  <span className="text-xs font-bold text-[#0fb880] group-hover:scale-110 transition-transform inline-block">{contributor.xp}</span>
+                  <span className="text-xs font-bold text-[#0fb880] group-hover:scale-110 transition-transform inline-block">+{contributor.points} XP</span>
                 </motion.div>
               ))}
             </div>
@@ -684,9 +683,9 @@ export function Alerts() {
           </div>
 
           {/* Load More */}
-          {!isLoading && filteredAlerts.length > 0 && (
+          {!isLoading && filteredAlerts.length > 0 && hasMorePages && (
             <motion.button 
-              onClick={() => toast.success('Loading more alerts...')}
+              onClick={loadMoreAlerts}
               className="w-full py-3 rounded-xl glass-panel hover:border-[#0fb880]/20 flex items-center justify-center gap-2 text-sm text-gray-300 hover:text-white transition-colors group"
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
@@ -729,22 +728,29 @@ export function Alerts() {
               Trending Areas
             </h2>
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-400">Sector 17</span>
-                <span className="text-xs font-bold text-red-500">High</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-400">Rajpura Bypass</span>
-                <span className="text-xs font-bold text-yellow-500">Medium</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-400">Patiala Road</span>
-                <span className="text-xs font-bold text-[#0fb880]">Clear</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-400">Ambala Highway</span>
-                <span className="text-xs font-bold text-orange-500">Low</span>
-              </div>
+              {trendingLoading ? (
+                [1,2,3,4].map(i => (
+                  <div key={i} className="flex items-center justify-between">
+                    <div className="h-3 bg-white/10 rounded w-20 animate-pulse"></div>
+                    <div className="h-3 bg-white/5 rounded w-10 animate-pulse"></div>
+                  </div>
+                ))
+              ) : (trendingAreas.length > 0 ? trendingAreas : [
+                { area: 'Sector 17', level: 'Clear' as const, alertCount: 0 },
+                { area: 'Rajpura Bypass', level: 'Clear' as const, alertCount: 0 },
+                { area: 'Patiala Road', level: 'Clear' as const, alertCount: 0 },
+                { area: 'Ambala Highway', level: 'Clear' as const, alertCount: 0 }
+              ]).map((area: TrendingAreaType) => (
+                <div key={area.area} className="flex items-center justify-between">
+                  <span className="text-xs text-gray-400">{area.area}</span>
+                  <span className={`text-xs font-bold ${
+                    area.level === 'High' ? 'text-red-500' :
+                    area.level === 'Medium' ? 'text-yellow-500' :
+                    area.level === 'Low' ? 'text-orange-500' :
+                    'text-[#0fb880]'
+                  }`}>{area.level}</span>
+                </div>
+              ))}
             </div>
           </div>
 
@@ -753,12 +759,21 @@ export function Alerts() {
               <span className="material-symbols-outlined text-[#0fb880]">eco</span>
               <div>
                 <h4 className="font-bold text-white text-sm mb-1">Eco-Challenge</h4>
-                <p className="text-xs text-gray-300 mb-3">Report 5 verified incidents this week to earn the "Green Guardian" badge.</p>
+                <p className="text-xs text-gray-300 mb-3">Report 5 verified incidents this week to earn the &quot;Green Guardian&quot; badge.</p>
                 <button 
-                  onClick={() => toast.success('Challenge joined!')}
-                  className="text-xs bg-[#0fb880] hover:bg-[#0fb880]/90 text-white px-3 py-1.5 rounded transition-colors"
+                  onClick={() => {
+                    setChallengeJoined(true);
+                    localStorage.setItem('commuteSmart_challenge', 'true');
+                    toast.success('Challenge joined! Start reporting!');
+                  }}
+                  disabled={challengeJoined}
+                  className={`text-xs px-3 py-1.5 rounded transition-colors ${
+                    challengeJoined 
+                      ? 'bg-[#0fb880]/30 text-[#0fb880] cursor-default' 
+                      : 'bg-[#0fb880] hover:bg-[#0fb880]/90 text-white'
+                  }`}
                 >
-                  Join Now
+                  {challengeJoined ? 'Joined ✓' : 'Join Now'}
                 </button>
               </div>
             </div>

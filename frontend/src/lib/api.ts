@@ -122,8 +122,8 @@ export const locationAPI = {
 
 export const alertsAPI = {
   // CONNECTED TO BACKEND: Alerts endpoints
-  getAlerts: () =>
-    api.get('/api/alerts'),
+  getAlerts: (page: number = 1, limit: number = 20) =>
+    api.get(`/api/alerts?page=${page}&limit=${limit}`),
   
   createAlert: (message: string, lat: number, long: number, type?: string, severity?: string, location?: string) =>
     api.post('/api/alerts', { message, lat, long, type, severity, location }),
@@ -164,6 +164,20 @@ export const userAPI = {
 
   removeFavourite: (routeId: string) =>
     api.delete(`/api/users/me/favourites/${routeId}`),
+
+  // CONNECTED TO BACKEND: User stats endpoint
+  getStats: () =>
+    api.get('/api/users/me/stats'),
+};
+
+export const statsAPI = {
+  // CONNECTED TO BACKEND: Live statistics
+  getLiveStats: () =>
+    api.get('/api/stats/live'),
+
+  // CONNECTED TO BACKEND: Trending areas
+  getTrendingAreas: () =>
+    api.get('/api/stats/trending'),
 };
 
 export const routesAPI = {
@@ -179,4 +193,5 @@ export const routesAPI = {
 export const getSocketUrl = () => getBackendUrl();
 
 export default api;
+
 
