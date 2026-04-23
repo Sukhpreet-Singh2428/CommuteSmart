@@ -29,26 +29,42 @@ app.use(express.json());
 
 app.use(cookieParser());
 
+const allowedOrigins = [
+  'http://localhost:3000',
+  'http://localhost:5173',
+  process.env.CLIENT_URL,
+  process.env.CLIENT_URL_PREVIEW,
+].filter(Boolean);
+
+if (allowedOrigins.length === 2) {
+  // Fallback if env vars not set
+  allowedOrigins.push('https://commute-smart.vercel.app');
+}
+
 app.use(cors({
   origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
-    
-    const allowedOrigins = [
-      "http://localhost:3000",
-      "https://commute-smart.vercel.app"
-    ];
-    
-    if (allowedOrigins.indexOf(origin) === -1) {
-      const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
-      return callback(new Error(msg), false);
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
     }
-    return callback(null, true);
+    return callback(new Error('CORS: origin not allowed: ' + origin));
   },
-  credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Cookie'],
+  credentials: true,
   exposedHeaders: ['Set-Cookie']
+}));
+
+// Explicitly handle OPTIONS preflight for all routes
+app.options('*', cors({
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    return callback(new Error('CORS: origin not allowed: ' + origin));
+  },
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Cookie'],
+  credentials: true,
 }));
 
 app.set('io', io);
