@@ -10,6 +10,7 @@ import { Register } from './pages/Register';
 import { Dashboard } from './pages/Dashboard';
 import { Alerts } from './pages/Alerts';
 import { Profile } from './pages/Profile';
+import { OfflineIndicator } from './components/OfflineIndicator';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const pageVariants = {
@@ -77,6 +78,7 @@ export default function App() {
     <AuthProvider>
       <RouteProvider>
         <BrowserRouter>
+          <OfflineIndicator />
           <AnimatePresence mode="wait">
             <AppRoutes />
           </AnimatePresence>

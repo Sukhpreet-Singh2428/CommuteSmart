@@ -46,7 +46,7 @@ app.use(cors({
     return callback(null, true);
   },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Cookie'],
   exposedHeaders: ['Set-Cookie']
 }));
@@ -66,8 +66,37 @@ app.use('/api/alerts', alertRoutes);
 const routeRoutes = require('./routes/routes');
 app.use('/api/routes', routeRoutes);
 
+const leaderboardRoutes = require('./routes/leaderboard');
+app.use('/api/leaderboard', leaderboardRoutes);
+
+const userRoutes = require('./routes/userRoutes');
+app.use('/api/users', userRoutes);
+
+const tripRoutes = require('./routes/trips');
+app.use('/api/trips', tripRoutes);
+
+const statsRoutes = require('./routes/stats');
+app.use('/api/stats', statsRoutes);
+
 app.get('/', (req, res) => {
   res.json({ message: "CommuteSmart Backend is Running!" });
+});
+
+//? Socket.io connection handler
+io.on('connection', (socket) => {
+  console.log('🔌 Socket connected:', socket.id);
+
+  // Personal room for user-specific events (badges, points)
+  socket.on('join:personal', ({ userId }) => {
+    if (userId) {
+      socket.join(`user:${userId}`);
+      console.log(`User ${userId} joined personal room`);
+    }
+  });
+
+  socket.on('disconnect', (reason) => {
+    console.log('🔌 Socket disconnected:', socket.id, reason);
+  });
 });
 
 const PORT = process.env.PORT || 5000;

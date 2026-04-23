@@ -5,6 +5,24 @@ import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { alertsAPI, getSocketUrl } from '../lib/api';
 import { io, Socket } from 'socket.io-client';
+import { PageNavbar } from '../components/PageNavbar';
+import { useLiveStats, useTrendingAreas, useTopContributors } from '../hooks/useLiveStats';
+import { useLocationService } from '../hooks/useLocationService';
+import { ReportAlertModal } from '../components/ReportAlertModal';
+import type { LeaderboardEntry, TrendingArea as TrendingAreaType } from '../types';
+
+// Helper to calculate distance between two coordinates
+const getDistanceKm = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+  if (typeof lat1 !== 'number' || typeof lon1 !== 'number' || typeof lat2 !== 'number' || typeof lon2 !== 'number') return Infinity;
+  const R = 6371; // km
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+};
 
 const punjabAlerts = [
   {
@@ -140,19 +158,28 @@ const filterOptions = [
 export function Alerts() {
   const [filter, setFilter] = useState<'all' | 'verified' | 'nearby' | 'recent'>('all');
   const { user } = useAuth();
+  const { userLocation } = useLocationService();
   const [isLoading, setIsLoading] = useState(true);
   const [alerts, setAlerts] = useState<any[]>(punjabAlerts); // Start with mock data
   const [upvotedAlerts, setUpvotedAlerts] = useState<Set<string>>(new Set());
   const [socket, setSocket] = useState<Socket | null>(null);
   const [showReportModal, setShowReportModal] = useState(false);
-  const [newAlert, setNewAlert] = useState({ 
-    message: '', 
-    lat: 30.73, 
-    long: 76.78, 
-    type: 'traffic',
-    severity: 'medium',
-    location: ''
-  }); // Default Chandigarh
+  const [currentPage, setCurrentPage] = useState(1);
+  const [hasMorePages, setHasMorePages] = useState(true);
+  
+  // PHASE 3: Comments State
+  const [expandedAlertId, setExpandedAlertId] = useState<string | null>(null);
+  const [alertComments, setAlertComments] = useState<Record<string, any[]>>({});
+  const [commentText, setCommentText] = useState('');
+  const [isSubmittingComment, setIsSubmittingComment] = useState(false);
+  const [challengeJoined, setChallengeJoined] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('commuteSmart_challenge') || 'false'); } catch { return false; }
+  });
+
+  // CONNECTED TO BACKEND: Live data hooks
+  const { stats: liveStats, loading: statsLoading } = useLiveStats();
+  const { areas: trendingAreas, loading: trendingLoading } = useTrendingAreas();
+  const { contributors: topContributors, loading: contributorsLoading } = useTopContributors(3);
 
   // CONNECTED TO BACKEND: Initialize Socket.io for real-time alerts
   useEffect(() => {
@@ -195,6 +222,36 @@ export function Alerts() {
         });
       });
 
+      // PHASE 3: Listen for upvote updates
+      newSocket.on('alert:upvoted', (data: any) => {
+        setAlerts(prev => prev.map(a => 
+          (a._id || a.id) === data.alertId ? { ...a, upvotes: data.upvoteCount } : a
+        ));
+      });
+
+      // PHASE 3: Listen for comment updates
+      newSocket.on('alert:comment:new', (data: any) => {
+        setAlerts(prev => prev.map(a => 
+          (a._id || a.id) === data.alertId ? { ...a, comments: data.totalComments } : a
+        ));
+        
+        setAlertComments(prev => {
+          if (prev[data.alertId]) {
+            // Prevent duplicate comments in local state
+            const exists = prev[data.alertId].some((c: any) => 
+              c.createdAt === data.comment.createdAt && c.userId === data.comment.userId
+            );
+            if (!exists) {
+              return {
+                ...prev,
+                [data.alertId]: [...prev[data.alertId], data.comment]
+              };
+            }
+          }
+          return prev;
+        });
+      });
+
       setSocket(newSocket);
     } catch (error) {
       console.log('⚠️ Failed to initialize socket, continuing without real-time updates:', error);
@@ -207,41 +264,54 @@ export function Alerts() {
     };
   }, []);
 
-  // CONNECTED TO BACKEND: Fetch alerts from API
-  const fetchAlerts = async () => {
-    setIsLoading(true);
+  // CONNECTED TO BACKEND: Fetch alerts from API with pagination
+  const fetchAlerts = async (page: number = 1, append: boolean = false) => {
+    if (!append) setIsLoading(true);
     try {
-      const response = await alertsAPI.getAlerts();
-      if (response.data.success && response.data.alerts) {
-        // Append new alerts to existing mock data
+      const response = await alertsAPI.getAlerts(page);
+      if (response.data.success && response.data.alerts && response.data.alerts.length > 0) {
         const backendAlerts = response.data.alerts.map((alert: any) => ({
           ...alert,
           id: alert._id,
           title: alert.message || 'Community Alert',
           description: alert.message || 'No description available',
-          location: 'Community Report',
-          timeAgo: 'Just now',
-          reporter: 'Community User',
-          avatar: 'CU',
-          type: 'community',
-          icon: 'report',
-          iconColor: 'text-blue-500',
-          verified: false,
+          location: alert.location || 'Community Report',
+          timeAgo: formatTimeAgo(alert.timeStamp || alert.createdAt || new Date().toISOString()),
+          reporter: alert.reportedBy || { email: 'Community User' },
+          avatar: alert.reportedBy?.email?.charAt(0)?.toUpperCase() || 'CU',
+          type: alert.type || 'community',
+          icon: getAlertIcon(alert.type || 'community'),
+          iconColor: getAlertIconColor(alert.type || 'community'),
+          verified: (alert.upvotes || 0) >= 5,
           upvotes: alert.upvotes || 0,
           comments: 0,
           liked: false,
-          createdAt: alert.timeStamp || new Date()
+          createdAt: alert.timeStamp || alert.createdAt || new Date().toISOString()
         }));
         
-        // Combine mock data with backend alerts
-        setAlerts([...punjabAlerts, ...backendAlerts]);
+        if (append) {
+          setAlerts(prev => [...prev, ...backendAlerts]);
+        } else {
+          setAlerts(backendAlerts);
+        }
+        setHasMorePages((response.data.pagination?.page || 1) < (response.data.pagination?.pages || 1));
+      } else {
+        if (!append) setAlerts(punjabAlerts);
+        setHasMorePages(false);
       }
     } catch (error: any) {
-      // Keep existing mock data if API fails
-      setAlerts(punjabAlerts);
+      console.warn('Failed to fetch alerts from backend, using mock data:', error.message);
+      if (!append) setAlerts(punjabAlerts);
+      setHasMorePages(false);
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const loadMoreAlerts = () => {
+    const nextPage = currentPage + 1;
+    setCurrentPage(nextPage);
+    fetchAlerts(nextPage, true);
   };
 
   // Load alerts on mount
@@ -254,7 +324,19 @@ export function Alerts() {
     if (!alert) return false;
     
     if (filter === 'verified') return alert.verified === true;
-    if (filter === 'nearby') return alert.location && (alert.location.includes('Chandigarh') || alert.location.includes('Sector'));
+    if (filter === 'nearby') {
+      // Defensive check
+      if (userLocation && alert.location && typeof alert.location === 'object' && alert.location.coordinates) {
+        const dist = getDistanceKm(userLocation[0], userLocation[1], alert.location.coordinates[1], alert.location.coordinates[0]);
+        return dist <= 8; // within 8 km
+      } else if (alert.lat && alert.long && userLocation) {
+        const dist = getDistanceKm(userLocation[0], userLocation[1], alert.lat, alert.long);
+        return dist <= 8;
+      }
+      
+      const locStr = typeof alert.location === 'string' ? alert.location : (alert.locationText || '');
+      return locStr.includes('Chandigarh') || locStr.includes('Sector');
+    }
     if (filter === 'recent') {
       // Calculate if alert is recent (within 30 minutes)
       const alertTime = new Date(alert.createdAt || alert.timeAgo || Date.now());
@@ -313,89 +395,58 @@ export function Alerts() {
     }
   };
 
-  // CONNECTED TO BACKEND: Handle new alert submission
-  const handleReportAlert = async () => {
-    if (!newAlert.message.trim()) {
-      toast.error('Please enter an alert message');
-      return;
-    }
-
-    try {
-      const response = await alertsAPI.createAlert(
-        newAlert.message, 
-        newAlert.lat, 
-        newAlert.long, 
-        newAlert.type, 
-        newAlert.severity, 
-        newAlert.location
-      );
-      if (response.data.success) {
-        toast.success('Alert reported successfully! 🎉');
-        setShowReportModal(false);
-        setNewAlert({ 
-          message: '', 
-          lat: 30.73, 
-          long: 76.78, 
-          type: 'traffic',
-          severity: 'medium',
-          location: ''
-        });
-        // No need to refresh alerts - Socket.io will handle real-time update
-      }
-    } catch (error: any) {
-      if (error.response?.status === 401) {
-        toast.error('Please login to report alerts');
-      } else {
-        toast.error('Failed to report alert. Please try again.');
+  // PHASE 3: Commenting Handlers
+  const toggleComments = async (alertId: string) => {
+    if (expandedAlertId === alertId) {
+      setExpandedAlertId(null);
+    } else {
+      setExpandedAlertId(alertId);
+      // Fetch comments if not loaded
+      if (!alertComments[alertId]) {
+        try {
+          const response = await alertsAPI.getComments(alertId);
+          if (response.data.success) {
+            setAlertComments(prev => ({ ...prev, [alertId]: response.data.comments }));
+          }
+        } catch (error) {
+          console.error('Error fetching comments:', error);
+        }
       }
     }
   };
 
+  const handleAddComment = async (alertId: string) => {
+    if (!commentText.trim()) return;
+    setIsSubmittingComment(true);
+    try {
+      const response = await alertsAPI.addComment(alertId, commentText);
+      if (response.data.success) {
+        setAlertComments(prev => ({
+          ...prev,
+          [alertId]: [...(prev[alertId] || []), response.data.comment]
+        }));
+        
+        // Update comments count on alert locally
+        setAlerts(prev => prev.map(a => 
+          a._id === alertId ? { ...a, comments: response.data.totalComments } : a
+        ));
+        
+        setCommentText('');
+        toast.success('Comment added!');
+      }
+    } catch (error: any) {
+      toast.error('Failed to add comment');
+    } finally {
+      setIsSubmittingComment(false);
+    }
+  };
+
+  // CONNECTED TO BACKEND: Handle new alert submission (now handled by ReportAlertModal)
+
   return (
     <div className="min-h-screen w-full flex flex-col bg-[#0a1411]">
-      {/* Navigation */}
-      <nav className="h-16 flex items-center justify-between px-6 border-b border-primary/20 bg-[#0a1411]/80 backdrop-blur-md z-50">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-            <span className="material-icons text-white text-lg">directions_bus</span>
-          </div>
-          <span className="font-bold text-xl tracking-tight text-white">CommuteSmart</span>
-        </div>
-        <div className="hidden md:flex items-center gap-8">
-          <Link className="text-gray-400 hover:text-white transition-colors text-sm font-medium" to="/dashboard">Dashboard</Link>
-          <Link className="text-[#0fb880] border-b-2 border-[#0fb880] h-16 flex items-center text-sm font-medium" to="/alerts">Community</Link>
-          <Link className="text-gray-400 hover:text-white transition-colors text-sm font-medium" to="/profile">Profile</Link>
-        </div>
-        <div className="flex items-center gap-4">
-          <div className="flex flex-col items-end">
-            <span className="text-[10px] text-gray-400 font-medium uppercase tracking-wider">Punjab Eco-Rank</span>
-            <span className="text-sm font-bold text-[#0fb880]">#{user?.points || 142} Chandigarh</span>
-          </div>
-          <div className="h-9 w-9 rounded-full border-2 border-[#0fb880]/30 p-0.5">
-            <div className="w-full h-full rounded-full bg-[#0fb880]/30 flex items-center justify-center text-white font-bold text-sm">
-              {user?.email?.charAt(0).toUpperCase() || 'U'}
-            </div>
-          </div>
-        </div>
-      </nav>
-
-      {/* Mobile Navigation */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 px-2 pb-safe glass-panel border-t border-white/10">
-        <div className="flex items-center justify-around h-16">
-          <Link to="/dashboard" className="flex flex-col items-center justify-center flex-1 py-2 rounded-xl text-gray-400">
-            <span className="material-symbols-outlined text-lg">dashboard</span>
-            <span className="text-xs mt-0.5">Dashboard</span>
-          </Link>
-          <Link to="/alerts" className="flex flex-col items-center justify-center flex-1 py-2 rounded-xl text-[#0fb880]">
-            <span className="material-symbols-outlined text-lg">forum</span>
-            <span className="text-xs mt-0.5">Community</span>
-          </Link>
-          <Link to="/profile" className="flex flex-col items-center justify-center flex-1 py-2 rounded-xl text-gray-400">
-            <span className="material-symbols-outlined text-lg">person</span>
-            <span className="text-xs mt-0.5">Profile</span>
-          </Link>
-        </div>
-      </nav>
+      {/* UNIFIED: Shared PageNavbar component */}
+      <PageNavbar activePage="alerts" />
 
       {/* Main Content */}
       <div className="flex-1 grid grid-cols-12 gap-4 p-4 pb-20 md:pb-4">
@@ -407,12 +458,17 @@ export function Alerts() {
               Live Statistics
             </h2>
             <div className="space-y-4">
-              {[
-                { label: 'Active Alerts', value: '24', color: 'text-white', delay: 0 },
-                { label: 'Verified', value: '12', color: 'text-[#0fb880]', delay: 0.1 },
-                { label: 'Contributors', value: '156', color: 'text-white', delay: 0.2 },
-                { label: 'Response Time', value: '2.3m', color: 'text-yellow-500', delay: 0.3 },
-              ].map((stat) => (
+              {(statsLoading ? [
+                { label: 'Active Alerts', value: '—', color: 'text-white', delay: 0 },
+                { label: 'Verified', value: '—', color: 'text-[#0fb880]', delay: 0.1 },
+                { label: 'Contributors', value: '—', color: 'text-white', delay: 0.2 },
+                { label: 'Response Time', value: '—', color: 'text-yellow-500', delay: 0.3 },
+              ] : [
+                { label: 'Active Alerts', value: String(liveStats?.activeAlerts ?? 0), color: 'text-white', delay: 0 },
+                { label: 'Verified', value: String(liveStats?.verifiedAlerts ?? 0), color: 'text-[#0fb880]', delay: 0.1 },
+                { label: 'Contributors', value: String(liveStats?.totalContributors ?? 0), color: 'text-white', delay: 0.2 },
+                { label: 'Response Time', value: `${liveStats?.avgResponseTime ?? 0}m`, color: 'text-yellow-500', delay: 0.3 },
+              ]).map((stat) => (
                 <motion.div 
                   key={stat.label}
                   className="flex items-center justify-between"
@@ -440,9 +496,21 @@ export function Alerts() {
               Top Contributors
             </h2>
             <div className="space-y-4">
-              {topContributors.map((contributor, index) => (
+              {contributorsLoading ? (
+                <div className="space-y-3">
+                  {[1,2,3].map(i => (
+                    <div key={i} className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-white/10 animate-pulse"></div>
+                      <div className="flex-1 space-y-1">
+                        <div className="h-3 bg-white/10 rounded w-20 animate-pulse"></div>
+                        <div className="h-2 bg-white/5 rounded w-14 animate-pulse"></div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (topContributors as LeaderboardEntry[]).map((contributor, index) => (
                 <motion.div 
-                  key={contributor.name} 
+                  key={contributor.userId || index} 
                   className="flex items-center gap-3 group"
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
@@ -451,7 +519,7 @@ export function Alerts() {
                 >
                   <div className="relative">
                     <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-white text-[10px] font-bold border border-white/20">
-                      {contributor.avatar}
+                      {(contributor.name || 'A').substring(0, 2).toUpperCase()}
                     </div>
                     <div className={`absolute -top-1 -right-1 text-[8px] font-bold px-1 rounded shadow-sm ${
                       contributor.rank === 1 ? 'bg-yellow-500 text-black' : 
@@ -462,10 +530,10 @@ export function Alerts() {
                     </div>
                   </div>
                   <div className="flex-1">
-                    <p className="text-sm font-medium text-white">{contributor.name}</p>
-                    <p className="text-xs text-gray-500">{contributor.reports} Reports</p>
+                    <p className={`text-sm font-medium ${contributor.userId === user?.id ? 'text-[#0fb880]' : 'text-white'}`}>{contributor.userId === user?.id ? 'You' : contributor.name}</p>
+                    <p className="text-xs text-gray-500">{contributor.points} pts</p>
                   </div>
-                  <span className="text-xs font-bold text-[#0fb880] group-hover:scale-110 transition-transform inline-block">{contributor.xp}</span>
+                  <span className="text-xs font-bold text-[#0fb880] group-hover:scale-110 transition-transform inline-block">+{contributor.points} XP</span>
                 </motion.div>
               ))}
             </div>
@@ -630,7 +698,15 @@ export function Alerts() {
                           </motion.span>
                           <span className="text-xs font-medium">{alert.upvotes || 0}</span>
                         </button>
-                        <button className="flex items-center gap-1.5 text-gray-400 hover:text-white transition-colors group">
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleComments(alert._id);
+                          }}
+                          className={`flex items-center gap-1.5 transition-colors group ${
+                            expandedAlertId === alert._id ? 'text-[#0fb880]' : 'text-gray-400 hover:text-white'
+                          }`}
+                        >
                           <motion.span 
                             className="material-symbols-outlined text-lg"
                             whileHover={{ scale: 1.2 }}
@@ -671,6 +747,62 @@ export function Alerts() {
                         )}
                       </div>
                     </div>
+
+                    {/* PHASE 3: Comments Section */}
+                    <AnimatePresence>
+                      {expandedAlertId === alert._id && (
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          exit={{ opacity: 0, height: 0 }}
+                          className="mt-4 pt-4 border-t border-white/10"
+                        >
+                          <div className="space-y-3 mb-3 max-h-48 overflow-y-auto custom-scrollbar pr-2">
+                            {(!alertComments[alert._id] || alertComments[alert._id].length === 0) ? (
+                              <p className="text-xs text-gray-500 text-center py-2">No comments yet. Be the first to comment!</p>
+                            ) : (
+                              alertComments[alert._id].map((comment: any, i: number) => (
+                                <div key={i} className="bg-white/5 rounded-lg p-2.5">
+                                  <div className="flex justify-between items-start mb-1">
+                                    <span className="text-xs font-bold text-[#0fb880]">{comment.userName}</span>
+                                    <span className="text-[10px] text-gray-500">{formatTimeAgo(comment.createdAt)}</span>
+                                  </div>
+                                  <p className="text-xs text-gray-300">{comment.text}</p>
+                                </div>
+                              ))
+                            )}
+                          </div>
+                          
+                          <div className="flex gap-2">
+                            <input
+                              type="text"
+                              value={commentText}
+                              onChange={(e) => setCommentText(e.target.value)}
+                              placeholder="Add a comment..."
+                              className="flex-1 bg-black/20 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-[#0fb880]"
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') handleAddComment(alert._id);
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleAddComment(alert._id);
+                              }}
+                              disabled={!commentText.trim() || isSubmittingComment}
+                              className="bg-[#0fb880] hover:bg-[#0fb880]/90 disabled:opacity-50 text-white rounded-xl px-3 flex items-center justify-center transition-colors"
+                            >
+                              {isSubmittingComment ? (
+                                <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                              ) : (
+                                <span className="material-symbols-outlined text-sm">send</span>
+                              )}
+                            </button>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
                 </div>
                     </motion.div>
@@ -681,9 +813,9 @@ export function Alerts() {
           </div>
 
           {/* Load More */}
-          {!isLoading && filteredAlerts.length > 0 && (
+          {!isLoading && filteredAlerts.length > 0 && hasMorePages && (
             <motion.button 
-              onClick={() => toast.success('Loading more alerts...')}
+              onClick={loadMoreAlerts}
               className="w-full py-3 rounded-xl glass-panel hover:border-[#0fb880]/20 flex items-center justify-center gap-2 text-sm text-gray-300 hover:text-white transition-colors group"
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
@@ -726,22 +858,29 @@ export function Alerts() {
               Trending Areas
             </h2>
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-400">Sector 17</span>
-                <span className="text-xs font-bold text-red-500">High</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-400">Rajpura Bypass</span>
-                <span className="text-xs font-bold text-yellow-500">Medium</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-400">Patiala Road</span>
-                <span className="text-xs font-bold text-[#0fb880]">Clear</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-400">Ambala Highway</span>
-                <span className="text-xs font-bold text-orange-500">Low</span>
-              </div>
+              {trendingLoading ? (
+                [1,2,3,4].map(i => (
+                  <div key={i} className="flex items-center justify-between">
+                    <div className="h-3 bg-white/10 rounded w-20 animate-pulse"></div>
+                    <div className="h-3 bg-white/5 rounded w-10 animate-pulse"></div>
+                  </div>
+                ))
+              ) : (trendingAreas.length > 0 ? trendingAreas : [
+                { area: 'Sector 17', level: 'Clear' as const, alertCount: 0 },
+                { area: 'Rajpura Bypass', level: 'Clear' as const, alertCount: 0 },
+                { area: 'Patiala Road', level: 'Clear' as const, alertCount: 0 },
+                { area: 'Ambala Highway', level: 'Clear' as const, alertCount: 0 }
+              ]).map((area: TrendingAreaType) => (
+                <div key={area.area} className="flex items-center justify-between">
+                  <span className="text-xs text-gray-400">{area.area}</span>
+                  <span className={`text-xs font-bold ${
+                    area.level === 'High' ? 'text-red-500' :
+                    area.level === 'Medium' ? 'text-yellow-500' :
+                    area.level === 'Low' ? 'text-orange-500' :
+                    'text-[#0fb880]'
+                  }`}>{area.level}</span>
+                </div>
+              ))}
             </div>
           </div>
 
@@ -750,12 +889,21 @@ export function Alerts() {
               <span className="material-symbols-outlined text-[#0fb880]">eco</span>
               <div>
                 <h4 className="font-bold text-white text-sm mb-1">Eco-Challenge</h4>
-                <p className="text-xs text-gray-300 mb-3">Report 5 verified incidents this week to earn the "Green Guardian" badge.</p>
+                <p className="text-xs text-gray-300 mb-3">Report 5 verified incidents this week to earn the &quot;Green Guardian&quot; badge.</p>
                 <button 
-                  onClick={() => toast.success('Challenge joined!')}
-                  className="text-xs bg-[#0fb880] hover:bg-[#0fb880]/90 text-white px-3 py-1.5 rounded transition-colors"
+                  onClick={() => {
+                    setChallengeJoined(true);
+                    localStorage.setItem('commuteSmart_challenge', 'true');
+                    toast.success('Challenge joined! Start reporting!');
+                  }}
+                  disabled={challengeJoined}
+                  className={`text-xs px-3 py-1.5 rounded transition-colors ${
+                    challengeJoined 
+                      ? 'bg-[#0fb880]/30 text-[#0fb880] cursor-default' 
+                      : 'bg-[#0fb880] hover:bg-[#0fb880]/90 text-white'
+                  }`}
                 >
-                  Join Now
+                  {challengeJoined ? 'Joined ✓' : 'Join Now'}
                 </button>
               </div>
             </div>
@@ -764,152 +912,10 @@ export function Alerts() {
       </div>
 
       {/* CONNECTED TO BACKEND: Report Alert Modal */}
-      <AnimatePresence>
-        {showReportModal && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-            onClick={() => setShowReportModal(false)}
-          >
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-[#0a1411] border border-white/10 rounded-2xl p-6 max-w-md w-full"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <h3 className="text-xl font-bold text-white mb-4">Report Alert</h3>
-              
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Alert Message <span className="text-red-400">*</span>
-                  </label>
-                  <textarea
-                    value={newAlert.message}
-                    onChange={(e) => setNewAlert({ ...newAlert, message: e.target.value })}
-                    className="w-full bg-[#122620]/50 border border-white/10 rounded-xl px-4 py-3 text-sm focus:ring-1 focus:ring-[#0fb880] focus:border-[#0fb880] outline-none transition-all text-white focus:bg-[#122620]/70 resize-none"
-                    rows={3}
-                    placeholder="Describe the traffic condition, delay, or incident..."
-                    maxLength={200}
-                  />
-                  <div className="text-right">
-                    <span className="text-xs text-gray-400">{newAlert.message.length}/200</span>
-                  </div>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Alert Type
-                  </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {[
-                      { id: 'traffic', label: 'Traffic', icon: 'traffic' },
-                      { id: 'accident', label: 'Accident', icon: 'crash_alert' },
-                      { id: 'delay', label: 'Delay', icon: 'schedule' },
-                      { id: 'construction', label: 'Construction', icon: 'construction' },
-                      { id: 'weather', label: 'Weather', icon: 'thunderstorm' },
-                      { id: 'info', label: 'Info', icon: 'info' }
-                    ].map((type) => (
-                      <button
-                        key={type.id}
-                        onClick={() => setNewAlert({ ...newAlert, type: type.id })}
-                        className={`p-3 rounded-xl border transition-all flex items-center gap-2 ${
-                          newAlert.type === type.id
-                            ? 'bg-[#0fb880]/20 border-[#0fb880]/30 text-[#0fb880]'
-                            : 'bg-white/5 border-white/10 text-gray-400 hover:border-[#0fb880]/20 hover:text-[#0fb880]'
-                        }`}
-                      >
-                        <span className="material-symbols-outlined text-sm">{type.icon}</span>
-                        <span className="text-xs font-medium">{type.label}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Severity
-                  </label>
-                  <div className="grid grid-cols-4 gap-2">
-                    {[
-                      { id: 'low', label: 'Low', color: 'text-green-400' },
-                      { id: 'medium', label: 'Medium', color: 'text-yellow-400' },
-                      { id: 'high', label: 'High', color: 'text-orange-400' },
-                      { id: 'critical', label: 'Critical', color: 'text-red-400' }
-                    ].map((severity) => (
-                      <button
-                        key={severity.id}
-                        onClick={() => setNewAlert({ ...newAlert, severity: severity.id })}
-                        className={`p-2 rounded-xl border transition-all flex flex-col items-center ${
-                          newAlert.severity === severity.id
-                            ? 'bg-white/10 border-white/30'
-                            : 'bg-white/5 border-white/10 hover:bg-white/10'
-                        }`}
-                      >
-                        <span className={`text-lg font-bold ${severity.color}`}>●</span>
-                        <span className="text-xs text-gray-300">{severity.label}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Location (Optional)
-                  </label>
-                  <input
-                    type="text"
-                    value={newAlert.location}
-                    onChange={(e) => setNewAlert({ ...newAlert, location: e.target.value })}
-                    className="w-full bg-[#122620]/50 border border-white/10 rounded-xl px-4 py-3 text-sm focus:ring-1 focus:ring-[#0fb880] focus:border-[#0fb880] outline-none transition-all text-white focus:bg-[#122620]/70"
-                    placeholder="e.g., Sector 17 Chowk, NH-44, Patiala Road"
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Area (Chandigarh area)
-                  </label>
-                  <select
-                    value={`${newAlert.lat},${newAlert.long}`}
-                    onChange={(e) => {
-                      const [lat, long] = e.target.value.split(',').map(Number);
-                      setNewAlert({ ...newAlert, lat, long });
-                    }}
-                    className="w-full bg-[#122620]/50 border border-white/10 rounded-xl px-4 py-3 text-sm focus:ring-1 focus:ring-[#0fb880] focus:border-[#0fb880] outline-none transition-all text-white focus:bg-[#122620]/70"
-                  >
-                    <option value="30.74,76.78">Sector 17, Chandigarh</option>
-                    <option value="30.73,76.79">Sector 22, Chandigarh</option>
-                    <option value="30.69,76.78">Sector 34, Chandigarh</option>
-                    <option value="30.71,76.71">Mohali</option>
-                    <option value="30.65,76.81">Zirakpur</option>
-                    <option value="30.38,76.78">Ambala</option>
-                    <option value="30.34,76.39">Patiala</option>
-                  </select>
-                </div>
-              </div>
-              
-              <div className="flex gap-3 mt-6">
-                <button
-                  onClick={() => setShowReportModal(false)}
-                  className="flex-1 bg-white/10 hover:bg-white/20 text-white font-medium py-3 rounded-xl transition-all"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleReportAlert}
-                  className="flex-1 bg-[#0fb880] hover:bg-[#0fb880]/90 text-white font-medium py-3 rounded-xl transition-all"
-                >
-                  Report Alert
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <ReportAlertModal
+        isOpen={showReportModal}
+        onClose={() => setShowReportModal(false)}
+      />
     </div>
   );
 }

@@ -1,34 +1,127 @@
 const Report = require('../models/Report');
 const User = require('../models/User');
-const { awardPoinst } = require('../utils/gamification');   //? Gamification: Award points for reporting
+const { awardPoints } = require('../utils/gamification');   //? Gamification: Award points for reporting
+
+// Badge checking function — called after createAlert and upvoteAlert (verification)
+async function checkAndAwardBadges(userId, io) {
+    try {
+        const user = await User.findById(userId);
+        if (!user) return;
+
+        const alertCount = await Report.countDocuments({ reportedBy: userId, type: 'alert' });
+        // Verified = upvotes array has 5+ entries
+        const verifiedCount = await Report.countDocuments({
+            reportedBy: userId,
+            type: 'alert',
+            $expr: { $gte: [{ $size: '$upvotes' }, 5] }
+        });
+
+        const badgesToAward = [];
+
+        if (alertCount >= 1 && !user.badges.includes('First Report'))
+            badgesToAward.push('First Report');
+
+        if (alertCount >= 10 && !user.badges.includes('Reliable Reporter'))
+            badgesToAward.push('Reliable Reporter');
+
+        if (alertCount >= 50 && !user.badges.includes('Community Hero'))
+            badgesToAward.push('Community Hero');
+
+        if (verifiedCount >= 5 && !user.badges.includes('Verified Voice'))
+            badgesToAward.push('Verified Voice');
+
+        if ((user.carbonSaved || 0) >= 1 && !user.badges.includes('Green Guardian'))
+            badgesToAward.push('Green Guardian');
+
+        if ((user.carbonSaved || 0) >= 10 && !user.badges.includes('Eco Champion'))
+            badgesToAward.push('Eco Champion');
+
+        if (badgesToAward.length > 0) {
+            await User.findByIdAndUpdate(userId, { $push: { badges: { $each: badgesToAward } } });
+            if (io) {
+                io.to(`user:${userId}`).emit('badge:earned', { badges: badgesToAward });
+            }
+        }
+    } catch (err) {
+        console.error('Error checking badges:', err);
+    }
+}
 
 exports.createAlert = async (req, res) => {
-    const {message, lat, long} = req.body;
+    const { message, lat, long, type, severity, location, area, routeFrom, routeTo } = req.body;
     const userId = req.user.id;
 
     const alert = new Report({
         type: 'alert',
+        alertType: type || 'traffic',
+        severity: severity || 'medium',
         message,
-        location: {type: 'Point', coordinates: [long, lat]},
-        reportedBy: userId
+        location: { type: 'Point', coordinates: [long, lat] },
+        locationText: location || '',
+        area: area || '',
+        routeFrom: routeFrom || '',
+        routeTo: routeTo || '',
+        reportedBy: userId,
+        upvotes: [],
+        upvoteCount: 0,
+        comments: []
     });
 
     await alert.save();
 
-    await awardPoinst(userId, 10);  //? 10 points for alert 
+    await awardPoints(userId, 10);  //? 10 points for alert 
 
-    //? Reduce honesty score slightly for every report
-    await User.findByIdAndUpdate(userId, {$inc: {honestyScore: -2}});
+    //? Carbon saved: each alert = 0.01 kg CO2
+    await User.findByIdAndUpdate(userId, {
+        $inc: { honestyScore: -2, carbonSaved: 0.01 },
+        $set: { lastActiveDate: new Date() }
+    });
 
     const io = req.app.get('io');
-    io.emit('newAlert', alert);
+    
+    // Populate reportedBy for the socket event
+    const populatedAlert = await Report.findById(alert._id).populate('reportedBy', 'email name username profilePhoto');
+    io.emit('alert:new', populatedAlert);
+    // Also emit legacy event name for backward compat
+    io.emit('newAlert', populatedAlert);
 
-    res.json({success: true, alert});
+    // Get updated user for points event
+    const updatedUser = await User.findById(userId).select('points carbonSaved badges');
+    io.to(`user:${userId}`).emit('points:earned', {
+        points: 10,
+        reason: 'Alert created',
+        total: updatedUser.points
+    });
+
+    // Check and award badges
+    await checkAndAwardBadges(userId, io);
+
+    res.json({success: true, alert: populatedAlert});
 };
 
 exports.getAlerts = async (req, res) => {
-    const alerts = await Report.find({type: 'alert'}).sort({timeStamp: -1}).limit(20);
-    res.json({success: true, alerts});
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const skip = (page - 1) * limit;
+
+    const alerts = await Report.find({type: 'alert'})
+        .populate('reportedBy', 'email name username profilePhoto')
+        .sort({timeStamp: -1})
+        .skip(skip)
+        .limit(limit);
+    
+    const total = await Report.countDocuments({type: 'alert'});
+    
+    res.json({
+        success: true, 
+        alerts,
+        pagination: {
+            page,
+            limit,
+            total,
+            pages: Math.ceil(total / limit)
+        }
+    });
 };
 
 exports.upvoteAlert = async (req, res) => {
@@ -37,15 +130,140 @@ exports.upvoteAlert = async (req, res) => {
         return res.status(404).json({success: false, message: "Alert not found"});
     }
 
-    alert.upvotes += 1;
-    await alert.save();
+    const userId = req.user.id;
+    const io = req.app.get('io');
 
-    //? if many upvotes, increase reporter's honesty score
-    if (alert.upvotes > 5){
-        await User.findByIdAndUpdate(alert.reportedBy, {$inc: {honestyScore: 5}});
+    // Toggle upvote using array
+    const upvotesArray = alert.upvotes || [];
+    const alreadyUpvoted = upvotesArray.some(id => id.toString() === userId);
+
+    if (alreadyUpvoted) {
+        // Remove upvote
+        alert.upvotes = upvotesArray.filter(id => id.toString() !== userId);
+    } else {
+        // Add upvote
+        alert.upvotes.push(userId);
+        
+        // Award 2 points to the alert's original reporter (if not self)
+        const reporterId = alert.reportedBy.toString();
+        if (reporterId !== userId) {
+            await User.findByIdAndUpdate(reporterId, { $inc: { points: 2, carbonSaved: 0.005 } });
+        }
     }
 
-    res.json({success: true, alert});
+    alert.upvoteCount = alert.upvotes.length;
+    await alert.save();
+
+    //? if 5 upvotes, alert is verified — award bonus to reporter
+    if (alert.upvotes.length === 5) {
+        const reporterId = alert.reportedBy.toString();
+        await User.findByIdAndUpdate(reporterId, {
+            $inc: { honestyScore: 5, carbonSaved: 0.04 }
+        });
+        await awardPoints(reporterId, 25); // 25 points for verification
+
+        const updatedReporter = await User.findById(reporterId).select('points');
+        io.to(`user:${reporterId}`).emit('points:earned', {
+            points: 25,
+            reason: 'Alert verified by community',
+            total: updatedReporter.points
+        });
+
+        // Check badges for reporter
+        await checkAndAwardBadges(reporterId, io);
+    }
+
+    // Award verifier points (if not self)
+    if (req.user && req.user.id && !alreadyUpvoted) {
+        const verifierId = req.user.id;
+        if (verifierId !== alert.reportedBy.toString()) {
+            await awardPoints(verifierId, 5); // 5 points for verifying
+            const updatedVerifier = await User.findById(verifierId).select('points');
+            io.to(`user:${verifierId}`).emit('points:earned', {
+                points: 5,
+                reason: 'Verified an alert',
+                total: updatedVerifier.points
+            });
+        }
+    }
+
+    // Emit upvote event to all connected clients
+    io.emit('alert:upvoted', {
+        alertId: alert._id,
+        upvoteCount: alert.upvotes.length,
+        upvotes: alert.upvotes
+    });
+
+    res.json({
+        success: true,
+        upvotes: alert.upvotes.length,
+        userUpvoted: !alreadyUpvoted
+    });
+};
+
+// POST /api/alerts/:id/comments — add a comment
+exports.addComment = async (req, res) => {
+    try {
+        const alert = await Report.findById(req.params.id);
+        if (!alert) {
+            return res.status(404).json({ success: false, message: 'Alert not found' });
+        }
+
+        const { text } = req.body;
+        if (!text || text.trim().length === 0) {
+            return res.status(400).json({ success: false, message: 'Comment text is required' });
+        }
+        if (text.length > 300) {
+            return res.status(400).json({ success: false, message: 'Comment must be under 300 characters' });
+        }
+
+        const user = await User.findById(req.user.id).select('name username email');
+        const newComment = {
+            userId: req.user.id,
+            userName: user.username ? `@${user.username}` : (user.name || user.email.split('@')[0]),
+            text: text.trim(),
+            createdAt: new Date()
+        };
+
+        alert.comments.push(newComment);
+        await alert.save();
+
+        const io = req.app.get('io');
+        io.emit('alert:comment:new', {
+            alertId: alert._id,
+            comment: newComment,
+            totalComments: alert.comments.length
+        });
+
+        res.json({
+            success: true,
+            comment: newComment,
+            totalComments: alert.comments.length
+        });
+    } catch (err) {
+        console.error('Error adding comment:', err);
+        res.status(500).json({ success: false, message: err.message });
+    }
+};
+
+// GET /api/alerts/:id/comments — get comments for an alert
+exports.getComments = async (req, res) => {
+    try {
+        const alert = await Report.findById(req.params.id).select('comments');
+        if (!alert) {
+            return res.status(404).json({ success: false, message: 'Alert not found' });
+        }
+
+        // Sort comments by createdAt desc
+        const comments = (alert.comments || []).sort((a, b) => 
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+
+        res.json({ success: true, comments });
+    } catch (err) {
+        console.error('Error fetching comments:', err);
+        res.status(500).json({ success: false, message: err.message });
+    }
 };
 
 // CONNECTED TO BACKEND: Get nearby alerts within radius
@@ -69,7 +287,7 @@ exports.getNearbyAlerts = async (req, res) => {
                 }
             }
         })
-        .populate('reportedBy', 'email')
+        .populate('reportedBy', 'email name username profilePhoto')
         .sort({timeStamp: -1})
         .limit(50);
 
@@ -139,7 +357,7 @@ exports.getRouteAlerts = async (req, res) => {
                 }
             }))
         })
-        .populate('reportedBy', 'email')
+        .populate('reportedBy', 'email name username profilePhoto')
         .sort({timeStamp: -1})
         .limit(50);
 

@@ -65,9 +65,28 @@ export const useLocationService = (): UseLocationServiceReturn => {
     });
 
     // CONNECTED TO BACKEND: Listen for real-time location updates
-    newSocket.on('locationUpdate', (data: { buses: Bus[] }) => {
+    newSocket.on('locationUpdate', (data: { vehicleId: string; lat: number; long: number }) => {
       console.log('Received real-time location update:', data);
-      setBuses(data.buses);
+      if (data.vehicleId && data.lat && data.long) {
+        setBuses(prev => {
+          const existing = prev.findIndex(b => b.vehicleId === data.vehicleId);
+          const updatedBus: Bus = {
+            vehicleId: data.vehicleId,
+            latitude: data.lat,
+            longitude: data.long,
+            eta: 'Live',
+            route: 'Unknown',
+            crowdLevel: 'medium',
+            type: 'bus'
+          };
+          if (existing >= 0) {
+            const newBuses = [...prev];
+            newBuses[existing] = updatedBus;
+            return newBuses;
+          }
+          return [...prev, updatedBus];
+        });
+      }
     });
 
     newSocket.on('error', (err: any) => {
@@ -214,8 +233,27 @@ export const useLocationService = (): UseLocationServiceReturn => {
       transports: ['websocket', 'polling']
     });
     
-    newSocket.on('locationUpdate', (data: { buses: Bus[] }) => {
-      setBuses(data.buses);
+    newSocket.on('locationUpdate', (data: { vehicleId: string; lat: number; long: number }) => {
+      if (data.vehicleId && data.lat && data.long) {
+        setBuses(prev => {
+          const existing = prev.findIndex(b => b.vehicleId === data.vehicleId);
+          const updatedBus: Bus = {
+            vehicleId: data.vehicleId,
+            latitude: data.lat,
+            longitude: data.long,
+            eta: 'Live',
+            route: 'Unknown',
+            crowdLevel: 'medium',
+            type: 'bus'
+          };
+          if (existing >= 0) {
+            const newBuses = [...prev];
+            newBuses[existing] = updatedBus;
+            return newBuses;
+          }
+          return [...prev, updatedBus];
+        });
+      }
     });
     
     setSocket(newSocket);

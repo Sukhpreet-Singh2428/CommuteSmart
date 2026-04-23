@@ -83,14 +83,14 @@ export function Navbar() {
                 className="text-[#0fb880] font-medium text-sm"
                 whileHover={{ scale: 1.1 }}
               >
-                {user.xp} XP
+                {user.points || 0} XP
               </motion.span>
               <motion.div 
                 className="w-9 h-9 rounded-full bg-[#0fb880]/30 flex items-center justify-center font-medium text-white border-2 border-[#0fb880]/50 cursor-pointer"
                 whileHover={{ scale: 1.1, rotate: 5 }}
                 whileTap={{ scale: 0.9 }}
               >
-                {user.name.charAt(0)}
+                {(user.name || user.email || 'U').charAt(0).toUpperCase()}
               </motion.div>
             </motion.div>
           )}

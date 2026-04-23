@@ -6,16 +6,22 @@ interface User {
   id: string;
   email: string;
   name?: string;
+  username?: string;
+  bio?: string;
+  city?: string;
+  profilePhoto?: string;
   points: number;
   carbonSaved: number;
   badges: string[];
   honestyScore: number;
+  favourites?: string[];
 }
 
 interface AuthContextType {
   user: User | null;
   login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string) => Promise<void>;
+  register: (email: string, password: string, name?: string) => Promise<void>;
+  updateUser: (userData: Partial<User>) => void;
   logout: () => void;
   isAuthenticated: boolean;
   isLoading: boolean;
@@ -64,12 +70,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       localStorage.getItem('commuteSmart_user') : null;
     
     if (storedUser) {
-      // If we have stored user, verify with backend
+      // If we have stored user, verify with backend (don't duplicate — first useEffect already loaded from localStorage)
       verifyAuthWithBackend();
-      setIsLoading(false);
-    } else {
-      // No stored user, set loading to false without checking auth
-      setIsLoading(false);
     }
   }, []);
 
@@ -140,9 +142,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const register = useCallback(async (email: string, password: string) => {
+  const register = useCallback(async (email: string, password: string, name?: string) => {
     try {
-      const response = await authAPI.register(email, password);
+      const response = await authAPI.register(email, password, name);
       
       if (response.data.success && response.data.user) {
         setUser(response.data.user);
@@ -161,6 +163,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const errorMessage = error.response?.data?.message || 'Registration failed';
       throw new Error(errorMessage);
     }
+  }, []);
+
+  // Update user data in context and localStorage (e.g., after earning points)
+  const updateUser = useCallback((userData: Partial<User>) => {
+    setUser(prev => {
+      if (!prev) return prev;
+      const updated = { ...prev, ...userData };
+      try {
+        if (typeof window !== 'undefined' && window.localStorage) {
+          localStorage.setItem('commuteSmart_user', JSON.stringify(updated));
+        }
+      } catch (storageError) {
+        console.error('Failed to update localStorage:', storageError);
+      }
+      return updated;
+    });
   }, []);
 
   const logout = useCallback(async () => {
@@ -190,6 +208,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         login,
         register,
         logout,
+        updateUser,
         isAuthenticated: !!user,
         isLoading
       }}

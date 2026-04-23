@@ -100,8 +100,8 @@ export const authAPI = {
   login: (email: string, password: string) =>
     api.post('/api/auth/login', { email, password }),
   
-  register: (email: string, password: string) =>
-    api.post('/api/auth/signup', { email, password }),
+  register: (email: string, password: string, name?: string) =>
+    api.post('/api/auth/signup', { email, password, name }),
   
   logout: () =>
     api.post('/api/auth/logout'),
@@ -122,11 +122,20 @@ export const locationAPI = {
 
 export const alertsAPI = {
   // CONNECTED TO BACKEND: Alerts endpoints
-  getAlerts: () =>
-    api.get('/api/alerts'),
+  getAlerts: (page: number = 1, limit: number = 20) =>
+    api.get(`/api/alerts?page=${page}&limit=${limit}`),
   
-  createAlert: (message: string, lat: number, long: number, type?: string, severity?: string, location?: string) =>
-    api.post('/api/alerts', { message, lat, long, type, severity, location }),
+  createAlert: (data: {
+    message: string;
+    lat: number;
+    long: number;
+    type?: string;
+    severity?: string;
+    location?: string;
+    area?: string;
+    routeFrom?: string;
+    routeTo?: string;
+  }) => api.post('/api/alerts', data),
   
   upvoteAlert: (alertId: string) =>
     api.patch(`/api/alerts/${alertId}/upvote`),
@@ -146,6 +155,77 @@ export const alertsAPI = {
   // CONNECTED TO BACKEND: Create route-specific alert
   createRouteAlert: (startPoint: string, endPoint: string, startLat: number, startLong: number, endLat: number, endLong: number, message: string, type?: string, severity?: string) =>
     api.post('/api/alerts/route', { startPoint, endPoint, startLat, startLong, endLat, endLong, message, type, severity }),
+
+  // PHASE 3: Comments
+  addComment: (alertId: string, text: string) =>
+    api.post(`/api/alerts/${alertId}/comments`, { text }),
+
+  getComments: (alertId: string) =>
+    api.get(`/api/alerts/${alertId}/comments`),
+};
+
+export const leaderboardAPI = {
+  // CONNECTED TO BACKEND: Leaderboard endpoint
+  getLeaderboard: (limit: number = 50) =>
+    api.get(`/api/leaderboard?limit=${limit}`),
+};
+
+export const userAPI = {
+  // CONNECTED TO BACKEND: User favourites endpoints
+  getFavourites: () =>
+    api.get('/api/users/me/favourites'),
+
+  addFavourite: (routeId: string) =>
+    api.post('/api/users/me/favourites', { routeId }),
+
+  removeFavourite: (routeId: string) =>
+    api.delete(`/api/users/me/favourites/${routeId}`),
+
+  // CONNECTED TO BACKEND: User stats endpoint
+  getStats: () =>
+    api.get('/api/users/me/stats'),
+
+  // PHASE 3: Profile update
+  updateProfile: (data: {
+    name?: string;
+    username?: string;
+    bio?: string;
+    city?: string;
+    profilePhoto?: string;
+  }) => api.patch('/api/users/me/profile', data),
+};
+
+export const tripsAPI = {
+  // PHASE 3: Trip endpoints
+  createTrip: (data: {
+    routeFrom: string;
+    routeTo: string;
+    distanceKm: number;
+    transportMode: string;
+    carbonSaved: number;
+  }) => api.post('/api/trips', data),
+
+  getMyTrips: () =>
+    api.get('/api/trips/me'),
+};
+
+export const statsAPI = {
+  // CONNECTED TO BACKEND: Live statistics
+  getLiveStats: () =>
+    api.get('/api/stats/live'),
+
+  // CONNECTED TO BACKEND: Trending areas
+  getTrendingAreas: () =>
+    api.get('/api/stats/trending'),
+};
+
+export const routesAPI = {
+  // CONNECTED TO BACKEND: Route suggestion endpoints
+  suggestRoutes: (startLat: number, startLong: number, endLat: number, endLong: number) =>
+    api.post('/api/routes/suggest', { startLat, startLong, endLat, endLong }),
+
+  calculateCarbon: (distance: number, mode: string) =>
+    api.post('/api/routes/calculate-carbon', { distance, mode }),
 };
 
 // Export backend URL for Socket.io connection
