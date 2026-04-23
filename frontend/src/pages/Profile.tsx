@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
-import { leaderboardAPI } from '../lib/api';
+import { leaderboardAPI, userAPI } from '../lib/api';
 import { PageNavbar } from '../components/PageNavbar';
 import { useUserStats } from '../hooks/useUserStats';
 
@@ -37,7 +37,7 @@ const settingsOptions = [
 ];
 
 export function Profile() {
-  const { user } = useAuth();
+  const { user, updateUser } = useAuth();
   const [activeTab, setActiveTab] = useState<'overview' | 'achievements' | 'activity' | 'settings'>('overview');
   const [isLoading, setIsLoading] = useState(true);
   const [leaderboardData, setLeaderboardData] = useState<Array<{ rank: number; name: string; xp: number; trend: string; highlight?: boolean }>>([]);
@@ -61,6 +61,57 @@ export function Profile() {
       return acc;
     }, {} as Record<string, boolean>)
   );
+
+  const [profileForm, setProfileForm] = useState({
+    name: user?.name || '',
+    username: user?.username || '',
+    bio: user?.bio || '',
+    city: user?.city || '',
+    profilePhoto: user?.profilePhoto || ''
+  });
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+
+  useEffect(() => {
+    if (user) {
+      setProfileForm({
+        name: user.name || '',
+        username: user.username || '',
+        bio: user.bio || '',
+        city: user.city || '',
+        profilePhoto: user.profilePhoto || ''
+      });
+    }
+  }, [user]);
+
+  const handleProfilePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 2 * 1024 * 1024) {
+        toast.error('File size must be less than 2MB');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setProfileForm(prev => ({ ...prev, profilePhoto: reader.result as string }));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleSaveProfile = async () => {
+    setIsSavingProfile(true);
+    try {
+      const response = await userAPI.updateProfile(profileForm);
+      if (response.data.success && updateUser) {
+        toast.success('Profile updated successfully!');
+        updateUser(response.data.user);
+      }
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to update profile');
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
 
   // POLISHED: Animate stats on mount
   useEffect(() => {
@@ -167,15 +218,22 @@ export function Profile() {
           <div className="glass-panel rounded-2xl p-5">
             <div className="flex flex-col items-center text-center">
               <div className="relative mb-4">
-                <div className="w-20 h-20 rounded-full bg-gradient-to-br from-[#0fb880] to-[#0ea5e9] flex items-center justify-center border-4 border-white/20 shadow-xl text-white text-2xl font-bold">
-                  {user?.name?.charAt(0) ?? 'U'}
+                <div className="w-20 h-20 rounded-full bg-gradient-to-br from-[#0fb880] to-[#0ea5e9] flex items-center justify-center border-4 border-white/20 shadow-xl overflow-hidden text-white text-2xl font-bold">
+                  {user?.profilePhoto ? (
+                    <img src={user.profilePhoto} alt="Profile" className="w-full h-full object-cover" />
+                  ) : (
+                    user?.name?.charAt(0) ?? 'U'
+                  )}
                 </div>
-                <div className="absolute bottom-0 right-0 w-6 h-6 bg-[#0fb880] rounded-full flex items-center justify-center border-2 border-[#0a1411]">
+                <div 
+                  className="absolute bottom-0 right-0 w-6 h-6 bg-[#0fb880] rounded-full flex items-center justify-center border-2 border-[#0a1411] cursor-pointer"
+                  onClick={() => setActiveTab('settings')}
+                >
                   <span className="material-symbols-outlined text-sm text-white">edit</span>
                 </div>
               </div>
-              <h2 className="text-lg font-bold text-white mb-1">{user?.name || user?.email?.split('@')[0] || 'User'}</h2>
-              <p className="text-[#0fb880] text-sm font-medium mb-4">{(user?.badges?.length || 0) > 0 ? user?.badges?.[0] : 'Commuter'} • Chandigarh</p>
+              <h2 className="text-lg font-bold text-white mb-1">{user?.name || user?.username || user?.email?.split('@')[0] || 'User'}</h2>
+              <p className="text-[#0fb880] text-sm font-medium mb-4">{(user?.badges?.length || 0) > 0 ? user?.badges?.[0] : 'Commuter'} • {user?.city || 'Chandigarh'}</p>
               
               <div className="w-full space-y-2">
                 <div className="flex justify-between text-xs font-bold text-gray-400 uppercase tracking-wider">
@@ -484,6 +542,64 @@ export function Profile() {
 
           {activeTab === 'settings' && (
             <div className="space-y-4">
+              <div className="glass-panel rounded-2xl p-5">
+                <h3 className="text-sm font-bold text-white mb-4 uppercase tracking-wider">Profile Details</h3>
+                <div className="space-y-4">
+                  <div className="flex flex-col items-center mb-6">
+                    <div className="relative group cursor-pointer">
+                      <div className="w-20 h-20 rounded-full bg-gradient-to-br from-[#0fb880] to-[#0ea5e9] flex items-center justify-center border-4 border-white/20 shadow-xl overflow-hidden text-white text-2xl font-bold">
+                        {profileForm.profilePhoto ? (
+                          <img src={profileForm.profilePhoto} alt="Profile" className="w-full h-full object-cover" />
+                        ) : (
+                          user?.name?.charAt(0) ?? 'U'
+                        )}
+                      </div>
+                      <div className="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                        <span className="material-symbols-outlined text-white text-xl">photo_camera</span>
+                      </div>
+                      <input type="file" accept="image/jpeg, image/png, image/webp" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onChange={handleProfilePhotoChange} />
+                    </div>
+                    <p className="text-xs text-gray-400 mt-2">Tap to change (Max 2MB)</p>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-400 mb-1 uppercase tracking-wider">Name</label>
+                      <input type="text" value={profileForm.name} onChange={e => setProfileForm({...profileForm, name: e.target.value})} className="w-full bg-[#122620]/50 border border-white/10 rounded-xl px-3 py-2 text-sm focus:ring-1 focus:ring-[#0fb880] outline-none text-white" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-400 mb-1 uppercase tracking-wider">Username</label>
+                      <input type="text" value={profileForm.username} onChange={e => setProfileForm({...profileForm, username: e.target.value})} className="w-full bg-[#122620]/50 border border-white/10 rounded-xl px-3 py-2 text-sm focus:ring-1 focus:ring-[#0fb880] outline-none text-white" />
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-xs font-medium text-gray-400 mb-1 uppercase tracking-wider">City</label>
+                    <input type="text" value={profileForm.city} onChange={e => setProfileForm({...profileForm, city: e.target.value})} className="w-full bg-[#122620]/50 border border-white/10 rounded-xl px-3 py-2 text-sm focus:ring-1 focus:ring-[#0fb880] outline-none text-white" />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-xs font-medium text-gray-400 mb-1 uppercase tracking-wider">Bio</label>
+                    <textarea value={profileForm.bio} onChange={e => setProfileForm({...profileForm, bio: e.target.value})} className="w-full bg-[#122620]/50 border border-white/10 rounded-xl px-3 py-2 text-sm focus:ring-1 focus:ring-[#0fb880] outline-none text-white resize-none" rows={3} maxLength={200}></textarea>
+                  </div>
+                  
+                  <div className="flex justify-end pt-2">
+                    <button 
+                      onClick={handleSaveProfile} 
+                      disabled={isSavingProfile}
+                      className="bg-[#0fb880] hover:bg-[#0fb880]/90 text-white font-bold py-2 px-6 rounded-xl transition-all flex items-center gap-2"
+                    >
+                      {isSavingProfile ? (
+                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                      ) : (
+                        <span className="material-symbols-outlined text-sm">save</span>
+                      )}
+                      Save Profile
+                    </button>
+                  </div>
+                </div>
+              </div>
+
               {settingsOptions.map((category) => (
                 <div key={category.category} className="glass-panel rounded-2xl p-5">
                   <h3 className="text-sm font-bold text-white mb-4 uppercase tracking-wider">{category.category}</h3>

@@ -6,6 +6,10 @@ interface User {
   id: string;
   email: string;
   name?: string;
+  username?: string;
+  bio?: string;
+  city?: string;
+  profilePhoto?: string;
   points: number;
   carbonSaved: number;
   badges: string[];

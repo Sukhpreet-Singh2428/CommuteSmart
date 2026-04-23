@@ -69,6 +69,7 @@ exports.removeFavourite = async (req, res) => {
 // GET /api/users/me/stats
 // Returns comprehensive user stats for Profile page
 const Report = require('../models/Report');
+const Trip = require('../models/Trip');
 
 exports.getUserStats = async (req, res) => {
     try {
@@ -81,8 +82,17 @@ exports.getUserStats = async (req, res) => {
         // Total reports by this user
         const totalReports = await Report.countDocuments({ reportedBy: userId, type: 'alert' });
 
-        // Verified reports (upvotes >= 5)
-        const verifiedReports = await Report.countDocuments({ reportedBy: userId, type: 'alert', upvotes: { $gte: 5 } });
+        // Verified reports (upvotes array has 5+ entries)
+        const verifiedReports = await Report.countDocuments({
+            reportedBy: userId,
+            type: 'alert',
+            $expr: { $gte: [{ $size: '$upvotes' }, 5] }
+        });
+
+        // Trip stats
+        const trips = await Trip.find({ userId }).lean();
+        const totalTrips = trips.length;
+        const totalDistance = trips.reduce((sum, t) => sum + (t.distanceKm || 0), 0);
 
         // Current streak: consecutive days with at least 1 alert
         const userAlerts = await Report.find({ reportedBy: userId, type: 'alert' })
@@ -166,6 +176,16 @@ exports.getUserStats = async (req, res) => {
         // Trees equivalent
         const treesEquivalent = cs / 21.77;
 
+        // Alerts this week (for dashboard weekly circle)
+        const thisWeekStart = new Date(now);
+        thisWeekStart.setDate(thisWeekStart.getDate() - thisWeekStart.getDay());
+        thisWeekStart.setHours(0, 0, 0, 0);
+        const alertsThisWeek = await Report.countDocuments({
+            reportedBy: userId,
+            type: 'alert',
+            timeStamp: { $gte: thisWeekStart }
+        });
+
         res.json({
             success: true,
             stats: {
@@ -175,8 +195,8 @@ exports.getUserStats = async (req, res) => {
                 honestyScore: user.honestyScore || 100,
                 totalReports,
                 verifiedReports,
-                totalTrips: 0,       // No Trip model yet
-                totalDistance: 0,     // No Trip model yet
+                totalTrips,
+                totalDistance: Math.round(totalDistance * 10) / 10,
                 currentStreak,
                 level,
                 nextLevelXP,
@@ -185,11 +205,85 @@ exports.getUserStats = async (req, res) => {
                 cleanAirRank,
                 greenScore,
                 weeklyProgress,
-                treesEquivalent
+                treesEquivalent,
+                alertsThisWeek
             }
         });
     } catch (err) {
         console.error('Error fetching user stats:', err);
+        res.status(500).json({ success: false, message: err.message });
+    }
+};
+
+// PATCH /api/users/me/profile — update profile details
+exports.updateProfile = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { name, username, bio, city, profilePhoto } = req.body;
+
+        const updates = {};
+
+        if (name !== undefined) {
+            if (name.length > 50) {
+                return res.status(400).json({ success: false, message: 'Name must be under 50 characters' });
+            }
+            updates.name = name;
+        }
+
+        if (username !== undefined) {
+            if (username && username.length > 30) {
+                return res.status(400).json({ success: false, message: 'Username must be under 30 characters' });
+            }
+            // Check uniqueness
+            if (username) {
+                const existing = await User.findOne({ username, _id: { $ne: userId } });
+                if (existing) {
+                    return res.status(400).json({ success: false, message: 'Username already taken' });
+                }
+            }
+            updates.username = username || null;
+        }
+
+        if (bio !== undefined) {
+            if (bio.length > 200) {
+                return res.status(400).json({ success: false, message: 'Bio must be under 200 characters' });
+            }
+            updates.bio = bio;
+        }
+
+        if (city !== undefined) {
+            updates.city = city;
+        }
+
+        if (profilePhoto !== undefined) {
+            // Basic size check for base64 strings (rough 2MB limit)
+            if (profilePhoto && profilePhoto.length > 2.8 * 1024 * 1024) {
+                return res.status(400).json({ success: false, message: 'Profile photo must be under 2MB' });
+            }
+            updates.profilePhoto = profilePhoto;
+        }
+
+        const updatedUser = await User.findByIdAndUpdate(userId, updates, { new: true }).select('-password');
+
+        res.json({
+            success: true,
+            user: {
+                id: updatedUser._id,
+                name: updatedUser.name || '',
+                username: updatedUser.username || '',
+                email: updatedUser.email,
+                bio: updatedUser.bio || '',
+                city: updatedUser.city || 'Chandigarh',
+                profilePhoto: updatedUser.profilePhoto || '',
+                points: updatedUser.points || 0,
+                carbonSaved: updatedUser.carbonSaved || 0,
+                badges: updatedUser.badges || [],
+                honestyScore: updatedUser.honestyScore || 100,
+                favourites: updatedUser.favourites || []
+            }
+        });
+    } catch (err) {
+        console.error('Error updating profile:', err);
         res.status(500).json({ success: false, message: err.message });
     }
 };

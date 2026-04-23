@@ -46,7 +46,7 @@ app.use(cors({
     return callback(null, true);
   },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Cookie'],
   exposedHeaders: ['Set-Cookie']
 }));
@@ -71,6 +71,9 @@ app.use('/api/leaderboard', leaderboardRoutes);
 
 const userRoutes = require('./routes/userRoutes');
 app.use('/api/users', userRoutes);
+
+const tripRoutes = require('./routes/trips');
+app.use('/api/trips', tripRoutes);
 
 const statsRoutes = require('./routes/stats');
 app.use('/api/stats', statsRoutes);

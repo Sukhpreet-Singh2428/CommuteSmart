@@ -7,7 +7,22 @@ import { alertsAPI, getSocketUrl } from '../lib/api';
 import { io, Socket } from 'socket.io-client';
 import { PageNavbar } from '../components/PageNavbar';
 import { useLiveStats, useTrendingAreas, useTopContributors } from '../hooks/useLiveStats';
+import { useLocationService } from '../hooks/useLocationService';
+import { ReportAlertModal } from '../components/ReportAlertModal';
 import type { LeaderboardEntry, TrendingArea as TrendingAreaType } from '../types';
+
+// Helper to calculate distance between two coordinates
+const getDistanceKm = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+  if (typeof lat1 !== 'number' || typeof lon1 !== 'number' || typeof lat2 !== 'number' || typeof lon2 !== 'number') return Infinity;
+  const R = 6371; // km
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+};
 
 const punjabAlerts = [
   {
@@ -143,6 +158,7 @@ const filterOptions = [
 export function Alerts() {
   const [filter, setFilter] = useState<'all' | 'verified' | 'nearby' | 'recent'>('all');
   const { user } = useAuth();
+  const { userLocation } = useLocationService();
   const [isLoading, setIsLoading] = useState(true);
   const [alerts, setAlerts] = useState<any[]>(punjabAlerts); // Start with mock data
   const [upvotedAlerts, setUpvotedAlerts] = useState<Set<string>>(new Set());
@@ -150,17 +166,15 @@ export function Alerts() {
   const [showReportModal, setShowReportModal] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [hasMorePages, setHasMorePages] = useState(true);
+  
+  // PHASE 3: Comments State
+  const [expandedAlertId, setExpandedAlertId] = useState<string | null>(null);
+  const [alertComments, setAlertComments] = useState<Record<string, any[]>>({});
+  const [commentText, setCommentText] = useState('');
+  const [isSubmittingComment, setIsSubmittingComment] = useState(false);
   const [challengeJoined, setChallengeJoined] = useState(() => {
     try { return JSON.parse(localStorage.getItem('commuteSmart_challenge') || 'false'); } catch { return false; }
   });
-  const [newAlert, setNewAlert] = useState({ 
-    message: '', 
-    lat: 30.73, 
-    long: 76.78, 
-    type: 'traffic',
-    severity: 'medium',
-    location: ''
-  }); // Default Chandigarh
 
   // CONNECTED TO BACKEND: Live data hooks
   const { stats: liveStats, loading: statsLoading } = useLiveStats();
@@ -203,6 +217,36 @@ export function Alerts() {
           if (!exists) {
             // New alert detected silently (no toast for auto-triggered events)
             return [alert, ...prev];
+          }
+          return prev;
+        });
+      });
+
+      // PHASE 3: Listen for upvote updates
+      newSocket.on('alert:upvoted', (data: any) => {
+        setAlerts(prev => prev.map(a => 
+          (a._id || a.id) === data.alertId ? { ...a, upvotes: data.upvoteCount } : a
+        ));
+      });
+
+      // PHASE 3: Listen for comment updates
+      newSocket.on('alert:comment:new', (data: any) => {
+        setAlerts(prev => prev.map(a => 
+          (a._id || a.id) === data.alertId ? { ...a, comments: data.totalComments } : a
+        ));
+        
+        setAlertComments(prev => {
+          if (prev[data.alertId]) {
+            // Prevent duplicate comments in local state
+            const exists = prev[data.alertId].some((c: any) => 
+              c.createdAt === data.comment.createdAt && c.userId === data.comment.userId
+            );
+            if (!exists) {
+              return {
+                ...prev,
+                [data.alertId]: [...prev[data.alertId], data.comment]
+              };
+            }
           }
           return prev;
         });
@@ -280,7 +324,19 @@ export function Alerts() {
     if (!alert) return false;
     
     if (filter === 'verified') return alert.verified === true;
-    if (filter === 'nearby') return alert.location && (alert.location.includes('Chandigarh') || alert.location.includes('Sector'));
+    if (filter === 'nearby') {
+      // Defensive check
+      if (userLocation && alert.location && typeof alert.location === 'object' && alert.location.coordinates) {
+        const dist = getDistanceKm(userLocation[0], userLocation[1], alert.location.coordinates[1], alert.location.coordinates[0]);
+        return dist <= 8; // within 8 km
+      } else if (alert.lat && alert.long && userLocation) {
+        const dist = getDistanceKm(userLocation[0], userLocation[1], alert.lat, alert.long);
+        return dist <= 8;
+      }
+      
+      const locStr = typeof alert.location === 'string' ? alert.location : (alert.locationText || '');
+      return locStr.includes('Chandigarh') || locStr.includes('Sector');
+    }
     if (filter === 'recent') {
       // Calculate if alert is recent (within 30 minutes)
       const alertTime = new Date(alert.createdAt || alert.timeAgo || Date.now());
@@ -339,43 +395,53 @@ export function Alerts() {
     }
   };
 
-  // CONNECTED TO BACKEND: Handle new alert submission
-  const handleReportAlert = async () => {
-    if (!newAlert.message.trim()) {
-      toast.error('Please enter an alert message');
-      return;
-    }
-
-    try {
-      const response = await alertsAPI.createAlert(
-        newAlert.message, 
-        newAlert.lat, 
-        newAlert.long, 
-        newAlert.type, 
-        newAlert.severity, 
-        newAlert.location
-      );
-      if (response.data.success) {
-        toast.success('Alert reported successfully! 🎉');
-        setShowReportModal(false);
-        setNewAlert({ 
-          message: '', 
-          lat: 30.73, 
-          long: 76.78, 
-          type: 'traffic',
-          severity: 'medium',
-          location: ''
-        });
-        // No need to refresh alerts - Socket.io will handle real-time update
-      }
-    } catch (error: any) {
-      if (error.response?.status === 401) {
-        toast.error('Please login to report alerts');
-      } else {
-        toast.error('Failed to report alert. Please try again.');
+  // PHASE 3: Commenting Handlers
+  const toggleComments = async (alertId: string) => {
+    if (expandedAlertId === alertId) {
+      setExpandedAlertId(null);
+    } else {
+      setExpandedAlertId(alertId);
+      // Fetch comments if not loaded
+      if (!alertComments[alertId]) {
+        try {
+          const response = await alertsAPI.getComments(alertId);
+          if (response.data.success) {
+            setAlertComments(prev => ({ ...prev, [alertId]: response.data.comments }));
+          }
+        } catch (error) {
+          console.error('Error fetching comments:', error);
+        }
       }
     }
   };
+
+  const handleAddComment = async (alertId: string) => {
+    if (!commentText.trim()) return;
+    setIsSubmittingComment(true);
+    try {
+      const response = await alertsAPI.addComment(alertId, commentText);
+      if (response.data.success) {
+        setAlertComments(prev => ({
+          ...prev,
+          [alertId]: [...(prev[alertId] || []), response.data.comment]
+        }));
+        
+        // Update comments count on alert locally
+        setAlerts(prev => prev.map(a => 
+          a._id === alertId ? { ...a, comments: response.data.totalComments } : a
+        ));
+        
+        setCommentText('');
+        toast.success('Comment added!');
+      }
+    } catch (error: any) {
+      toast.error('Failed to add comment');
+    } finally {
+      setIsSubmittingComment(false);
+    }
+  };
+
+  // CONNECTED TO BACKEND: Handle new alert submission (now handled by ReportAlertModal)
 
   return (
     <div className="min-h-screen w-full flex flex-col bg-[#0a1411]">
@@ -632,7 +698,15 @@ export function Alerts() {
                           </motion.span>
                           <span className="text-xs font-medium">{alert.upvotes || 0}</span>
                         </button>
-                        <button className="flex items-center gap-1.5 text-gray-400 hover:text-white transition-colors group">
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleComments(alert._id);
+                          }}
+                          className={`flex items-center gap-1.5 transition-colors group ${
+                            expandedAlertId === alert._id ? 'text-[#0fb880]' : 'text-gray-400 hover:text-white'
+                          }`}
+                        >
                           <motion.span 
                             className="material-symbols-outlined text-lg"
                             whileHover={{ scale: 1.2 }}
@@ -673,6 +747,62 @@ export function Alerts() {
                         )}
                       </div>
                     </div>
+
+                    {/* PHASE 3: Comments Section */}
+                    <AnimatePresence>
+                      {expandedAlertId === alert._id && (
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          exit={{ opacity: 0, height: 0 }}
+                          className="mt-4 pt-4 border-t border-white/10"
+                        >
+                          <div className="space-y-3 mb-3 max-h-48 overflow-y-auto custom-scrollbar pr-2">
+                            {(!alertComments[alert._id] || alertComments[alert._id].length === 0) ? (
+                              <p className="text-xs text-gray-500 text-center py-2">No comments yet. Be the first to comment!</p>
+                            ) : (
+                              alertComments[alert._id].map((comment: any, i: number) => (
+                                <div key={i} className="bg-white/5 rounded-lg p-2.5">
+                                  <div className="flex justify-between items-start mb-1">
+                                    <span className="text-xs font-bold text-[#0fb880]">{comment.userName}</span>
+                                    <span className="text-[10px] text-gray-500">{formatTimeAgo(comment.createdAt)}</span>
+                                  </div>
+                                  <p className="text-xs text-gray-300">{comment.text}</p>
+                                </div>
+                              ))
+                            )}
+                          </div>
+                          
+                          <div className="flex gap-2">
+                            <input
+                              type="text"
+                              value={commentText}
+                              onChange={(e) => setCommentText(e.target.value)}
+                              placeholder="Add a comment..."
+                              className="flex-1 bg-black/20 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-[#0fb880]"
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') handleAddComment(alert._id);
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleAddComment(alert._id);
+                              }}
+                              disabled={!commentText.trim() || isSubmittingComment}
+                              className="bg-[#0fb880] hover:bg-[#0fb880]/90 disabled:opacity-50 text-white rounded-xl px-3 flex items-center justify-center transition-colors"
+                            >
+                              {isSubmittingComment ? (
+                                <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                              ) : (
+                                <span className="material-symbols-outlined text-sm">send</span>
+                              )}
+                            </button>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
                 </div>
                     </motion.div>
@@ -782,152 +912,10 @@ export function Alerts() {
       </div>
 
       {/* CONNECTED TO BACKEND: Report Alert Modal */}
-      <AnimatePresence>
-        {showReportModal && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-            onClick={() => setShowReportModal(false)}
-          >
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-[#0a1411] border border-white/10 rounded-2xl p-6 max-w-md w-full"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <h3 className="text-xl font-bold text-white mb-4">Report Alert</h3>
-              
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Alert Message <span className="text-red-400">*</span>
-                  </label>
-                  <textarea
-                    value={newAlert.message}
-                    onChange={(e) => setNewAlert({ ...newAlert, message: e.target.value })}
-                    className="w-full bg-[#122620]/50 border border-white/10 rounded-xl px-4 py-3 text-sm focus:ring-1 focus:ring-[#0fb880] focus:border-[#0fb880] outline-none transition-all text-white focus:bg-[#122620]/70 resize-none"
-                    rows={3}
-                    placeholder="Describe the traffic condition, delay, or incident..."
-                    maxLength={200}
-                  />
-                  <div className="text-right">
-                    <span className="text-xs text-gray-400">{newAlert.message.length}/200</span>
-                  </div>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Alert Type
-                  </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {[
-                      { id: 'traffic', label: 'Traffic', icon: 'traffic' },
-                      { id: 'accident', label: 'Accident', icon: 'crash_alert' },
-                      { id: 'delay', label: 'Delay', icon: 'schedule' },
-                      { id: 'construction', label: 'Construction', icon: 'construction' },
-                      { id: 'weather', label: 'Weather', icon: 'thunderstorm' },
-                      { id: 'info', label: 'Info', icon: 'info' }
-                    ].map((type) => (
-                      <button
-                        key={type.id}
-                        onClick={() => setNewAlert({ ...newAlert, type: type.id })}
-                        className={`p-3 rounded-xl border transition-all flex items-center gap-2 ${
-                          newAlert.type === type.id
-                            ? 'bg-[#0fb880]/20 border-[#0fb880]/30 text-[#0fb880]'
-                            : 'bg-white/5 border-white/10 text-gray-400 hover:border-[#0fb880]/20 hover:text-[#0fb880]'
-                        }`}
-                      >
-                        <span className="material-symbols-outlined text-sm">{type.icon}</span>
-                        <span className="text-xs font-medium">{type.label}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Severity
-                  </label>
-                  <div className="grid grid-cols-4 gap-2">
-                    {[
-                      { id: 'low', label: 'Low', color: 'text-green-400' },
-                      { id: 'medium', label: 'Medium', color: 'text-yellow-400' },
-                      { id: 'high', label: 'High', color: 'text-orange-400' },
-                      { id: 'critical', label: 'Critical', color: 'text-red-400' }
-                    ].map((severity) => (
-                      <button
-                        key={severity.id}
-                        onClick={() => setNewAlert({ ...newAlert, severity: severity.id })}
-                        className={`p-2 rounded-xl border transition-all flex flex-col items-center ${
-                          newAlert.severity === severity.id
-                            ? 'bg-white/10 border-white/30'
-                            : 'bg-white/5 border-white/10 hover:bg-white/10'
-                        }`}
-                      >
-                        <span className={`text-lg font-bold ${severity.color}`}>●</span>
-                        <span className="text-xs text-gray-300">{severity.label}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Location (Optional)
-                  </label>
-                  <input
-                    type="text"
-                    value={newAlert.location}
-                    onChange={(e) => setNewAlert({ ...newAlert, location: e.target.value })}
-                    className="w-full bg-[#122620]/50 border border-white/10 rounded-xl px-4 py-3 text-sm focus:ring-1 focus:ring-[#0fb880] focus:border-[#0fb880] outline-none transition-all text-white focus:bg-[#122620]/70"
-                    placeholder="e.g., Sector 17 Chowk, NH-44, Patiala Road"
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Area (Chandigarh area)
-                  </label>
-                  <select
-                    value={`${newAlert.lat},${newAlert.long}`}
-                    onChange={(e) => {
-                      const [lat, long] = e.target.value.split(',').map(Number);
-                      setNewAlert({ ...newAlert, lat, long });
-                    }}
-                    className="w-full bg-[#122620]/50 border border-white/10 rounded-xl px-4 py-3 text-sm focus:ring-1 focus:ring-[#0fb880] focus:border-[#0fb880] outline-none transition-all text-white focus:bg-[#122620]/70"
-                  >
-                    <option value="30.74,76.78">Sector 17, Chandigarh</option>
-                    <option value="30.73,76.79">Sector 22, Chandigarh</option>
-                    <option value="30.69,76.78">Sector 34, Chandigarh</option>
-                    <option value="30.71,76.71">Mohali</option>
-                    <option value="30.65,76.81">Zirakpur</option>
-                    <option value="30.38,76.78">Ambala</option>
-                    <option value="30.34,76.39">Patiala</option>
-                  </select>
-                </div>
-              </div>
-              
-              <div className="flex gap-3 mt-6">
-                <button
-                  onClick={() => setShowReportModal(false)}
-                  className="flex-1 bg-white/10 hover:bg-white/20 text-white font-medium py-3 rounded-xl transition-all"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleReportAlert}
-                  className="flex-1 bg-[#0fb880] hover:bg-[#0fb880]/90 text-white font-medium py-3 rounded-xl transition-all"
-                >
-                  Report Alert
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <ReportAlertModal
+        isOpen={showReportModal}
+        onClose={() => setShowReportModal(false)}
+      />
     </div>
   );
 }

@@ -5,6 +5,24 @@ const userSchema = new mongoose.Schema({
         type: String,
         default: ''
     },
+    username: {
+        type: String,
+        unique: true,
+        sparse: true,
+        default: null
+    },
+    bio: {
+        type: String,
+        default: ''
+    },
+    city: {
+        type: String,
+        default: 'Chandigarh'
+    },
+    profilePhoto: {
+        type: String,
+        default: ''
+    },
     email : {
         type: String,
         required: true,

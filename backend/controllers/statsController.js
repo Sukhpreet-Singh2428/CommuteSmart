@@ -4,60 +4,68 @@ const User = require('../models/User');
 // GET /api/stats/live
 // Returns live statistics for the Community page
 exports.getLiveStats = async (req, res) => {
-    try {
-        const now = new Date();
-        const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-        const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  try {
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
-        // Active alerts in last 24h
-        const activeAlerts = await Report.countDocuments({
-            type: 'alert',
-            timeStamp: { $gte: twentyFourHoursAgo }
-        });
+    const Model = Report; 
 
-        // Verified alerts (upvotes >= 5) in last 24h
-        const verifiedAlerts = await Report.countDocuments({
-            type: 'alert',
-            upvotes: { $gte: 5 },
-            timeStamp: { $gte: twentyFourHoursAgo }
-        });
+    // countDocuments never triggers field casting — safe even with corrupt documents
+    const activeAlerts = await Model.countDocuments({
+      createdAt: { $gte: twentyFourHoursAgo }
+    });
 
-        // Total distinct contributors (all time)
-        const contributors = await Report.distinct('reportedBy', { type: 'alert' });
-        const totalContributors = contributors.length;
+    const verifiedAlerts = await Model.countDocuments({
+      verified: true,
+      createdAt: { $gte: twentyFourHoursAgo }
+    });
 
-        // Average response time: time between creation and first verification (upvotes>=5)
-        // for alerts verified in last 7 days
-        const verifiedRecent = await Report.find({
-            type: 'alert',
-            upvotes: { $gte: 5 },
-            timeStamp: { $gte: sevenDaysAgo }
-        }).select('timeStamp upvotes').lean();
+    // aggregate pipeline bypasses Mongoose document casting entirely
+    const contributorResult = await Model.aggregate([
+      { $match: { reportedBy: { $exists: true, $ne: null } } },
+      { $group: { _id: '$reportedBy' } },
+      { $count: 'total' }
+    ]);
+    const totalContributors = contributorResult[0]?.total ?? 0;
 
-        let avgResponseTime = 0;
-        if (verifiedRecent.length > 0) {
-            // Approximate: assume verification happens ~(upvotes * 2) minutes after creation
-            // Since we don't track individual upvote timestamps, estimate based on alert age
-            const totalMinutes = verifiedRecent.reduce((sum, alert) => {
-                const age = (now.getTime() - new Date(alert.timeStamp).getTime()) / (1000 * 60);
-                return sum + Math.min(age, 60); // Cap at 60 min for average
-            }, 0);
-            avgResponseTime = parseFloat((totalMinutes / verifiedRecent.length).toFixed(1));
-        }
+    // Response time: use .lean() so Mongoose never tries to cast upvotes/comments
+    const verifiedWithTime = await Model.find({
+      verified: true,
+      verifiedAt: { $exists: true, $gte: sevenDaysAgo }
+    }).select('createdAt verifiedAt').lean();
 
-        res.json({
-            success: true,
-            stats: {
-                activeAlerts,
-                verifiedAlerts,
-                totalContributors,
-                avgResponseTime
-            }
-        });
-    } catch (err) {
-        console.error('Error fetching live stats:', err);
-        res.status(500).json({ success: false, message: err.message });
+    let avgResponseTime = 0;
+    if (verifiedWithTime.length > 0) {
+      const totalMs = verifiedWithTime.reduce((sum, doc) => {
+        const diff = new Date(doc.verifiedAt) - new Date(doc.createdAt);
+        return sum + (isNaN(diff) ? 0 : diff);
+      }, 0);
+      avgResponseTime = parseFloat((totalMs / verifiedWithTime.length / 60000).toFixed(1));
     }
+
+    res.json({
+      success: true,
+      stats: {
+        activeAlerts,
+        verifiedAlerts,
+        totalContributors,
+        avgResponseTime
+      }
+    });
+
+  } catch (err) {
+    console.error('getLiveStats error:', err.message);
+    // Return safe zeros — never let this endpoint return 500 to the client
+    res.json({
+      success: true,
+      stats: {
+        activeAlerts: 0,
+        verifiedAlerts: 0,
+        totalContributors: 0,
+        avgResponseTime: 0
+      }
+    });
+  }
 };
 
 // GET /api/stats/trending

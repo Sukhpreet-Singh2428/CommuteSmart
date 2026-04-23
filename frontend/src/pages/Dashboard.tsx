@@ -3,10 +3,11 @@ import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { SafeMapView } from '../components/SafeMapView';
 import { UserMenu } from '../components/UserMenu';
+import { ReportAlertModal } from '../components/ReportAlertModal';
 import { useLocationService } from '../hooks/useLocationService';
 import { useRoute } from '../context/RouteContext';
 import { useAuth } from '../context/AuthContext';
-import { alertsAPI, getSocketUrl } from '../lib/api';
+import { alertsAPI, tripsAPI, getSocketUrl, userAPI } from '../lib/api';
 import { io, Socket } from 'socket.io-client';
 import toast from 'react-hot-toast';
 import axios from 'axios';
@@ -107,7 +108,7 @@ export function Dashboard() {
 
 function DashboardContent() {
   // CONNECTED TO BACKEND: Use auth context for user data
-  const { user } = useAuth();
+  const { user, updateUser } = useAuth();
   // CONNECTED TO BACKEND: Use location service for real-time data
   const { shareLocation, userLocation, isLoading: locationLoading } = useLocationService();
   const { routeData, setStartPoint, setEndPoint, setRoutePath, clearRoute: clearContextRoute } = useRoute();
@@ -142,14 +143,20 @@ function DashboardContent() {
   // ADDED: Geocoding loading state
   const [isGeocoding, setIsGeocoding] = useState(false);
   
-  // ADDED: Report message state
-  const [reportMessage, setReportMessage] = useState('');
-  
   // ADDED: Report modal state
   const [showReportModal, setShowReportModal] = useState(false);
   
   // ADDED: Community alerts state for user-reported alerts
   const [communityAlerts, setCommunityAlerts] = useState<any[]>([]);
+
+  // PHASE 3: Travel confirmation state
+  const [routeDistanceKm, setRouteDistanceKm] = useState<number>(0);
+  const [showTravelConfirm, setShowTravelConfirm] = useState(false);
+  const [travelSuccess, setTravelSuccess] = useState<string | null>(null);
+  const [isConfirmingTrip, setIsConfirmingTrip] = useState(false);
+
+  // PHASE 3: Eco dashboard real stats
+  const [ecoStats, setEcoStats] = useState<{ levelProgressPct: number; alertsThisWeek: number } | null>(null);
 
   // Helper functions for alert display
 const getAlertIcon = (type: string) => {
@@ -652,109 +659,71 @@ const getAlertTypeColor = (type: string) => {
   };
 
   // CONNECTED TO BACKEND: Report alert handler
-  const handleReportAlert = async () => {
-    if (!routeData.startPoint || !routeData.endPoint) {
-      toast.error('Please enter both start and end points to report an alert');
-      return;
-    }
-
-    if (!routeData.startCoords || !routeData.endCoords) {
-      toast.error('Please calculate the route first to report an alert');
-      return;
-    }
-
-    // Open the report modal
+  const handleReportAlert = () => {
+    // Open the shared report modal
     setShowReportModal(true);
   };
 
-  // CONNECTED TO BACKEND: Submit report from modal
-  const handleSubmitReport = async (message: string) => {
+  // PHASE 3: Handle travel confirmation
+  const handleConfirmTravel = async () => {
+    if (!routeData.startPoint || !routeData.endPoint || routeDistanceKm <= 0) return;
+    
+    setIsConfirmingTrip(true);
     try {
-      if (!message.trim()) {
-        toast.error('Please enter a message for the alert');
-        return;
-      }
+      const CO2_CAR_PER_KM = 0.21;
+      const CO2_BUS_PER_KM = 0.04;
+      const carbonSaved = parseFloat(((CO2_CAR_PER_KM - CO2_BUS_PER_KM) * routeDistanceKm).toFixed(2));
 
-      // Create a route-specific alert for the backend
-      const alertData = {
-        message: message.trim(),
-        location: `${routeData.startPoint} - ${routeData.endPoint}`,
-        lat: routeData.startCoords[0],
-        long: routeData.startCoords[1],
-        type: 'traffic',
-        severity: 'medium',
-        timestamp: new Date().toISOString()
-      };
+      const response = await tripsAPI.createTrip({
+        routeFrom: routeData.startPoint,
+        routeTo: routeData.endPoint,
+        distanceKm: routeDistanceKm,
+        transportMode: selectedMode,
+        carbonSaved,
+      });
 
-      console.log('🚨 Reporting route alert to backend:', alertData);
-      
-      try {
-        // Try to send to backend using existing alerts API
-        const response = await alertsAPI.createAlert(
-          alertData.message,
-          alertData.lat,
-          alertData.long,
-          alertData.type,
-          alertData.severity,
-          alertData.location
-        );
-
-        console.log('✅ Alert reported successfully to backend:', response.data);
-        toast.success('Alert reported successfully! 🚨');
-      } catch (backendError: any) {
-        console.warn('⚠️ Backend not available, using local storage fallback:', backendError);
+      if (response.data.success) {
+        // Update user context
+        if (user) {
+          updateUser({
+            carbonSaved: response.data.carbonSaved,
+            points: response.data.points,
+          });
+        }
         
-        // Fallback to local storage if backend is not running
-        const existingAlerts = JSON.parse(localStorage.getItem('commuteSmart_alerts') || '[]');
-        const newAlert = {
-          ...alertData,
-          id: Date.now().toString(),
-          time: 'Just now',
-          user: 'You',
-          name: 'You',
-          avatar: 'YU',
-          text: alertData.message,
-          location: alertData.location,
-          lat: alertData.lat,
-          long: alertData.long
-        };
-        existingAlerts.push(newAlert);
-        localStorage.setItem('commuteSmart_alerts', JSON.stringify(existingAlerts));
+        setShowTravelConfirm(false);
+        setTravelSuccess(`🌱 +${carbonSaved} kg CO2 saved! Great choice.`);
         
-        console.log('✅ Alert saved locally:', newAlert);
-        toast.success('Alert reported successfully! (Saved locally) 🚨');
-        
-        // Add to current alerts immediately for both route and community feed
-        setRouteAlerts(prev => [newAlert, ...prev]);
-        
-        // Also add to community alerts for community feed visibility
-        setCommunityAlerts(prev => [newAlert, ...prev]);
+        // Auto-clear success message after 3s
+        setTimeout(() => setTravelSuccess(null), 3000);
       }
-      
-      // Close modal and clear message
-      setShowReportModal(false);
-      setReportMessage('');
-      
-      // Refresh the alerts to show the new one
-      if (routeData.startCoords && routeData.endCoords) {
-        await fetchRouteAlerts([routeData.startCoords[0], routeData.startCoords[1]]);
-      }
-      
-    } catch (error: any) {
-      console.error('❌ Error reporting alert:', error);
-      
-      // More detailed error handling
-      if (error.code === 'ECONNREFUSED') {
-        toast.error('Cannot connect to server. Alert saved locally.');
-      } else if (error.response?.status === 401) {
-        toast.error('Please login to report alerts.');
-      } else if (error.response?.data?.message) {
-        toast.error(error.response.data.message);
-      } else {
-        toast.error('Failed to report alert. Please try again.');
-      }
+    } catch (error) {
+      console.error('Error confirming trip:', error);
+      toast.error('Failed to log trip. Please try again.');
+    } finally {
+      setIsConfirmingTrip(false);
     }
   };
+
+  // PHASE 3: Fetch eco stats for dashboard
+  useEffect(() => {
+    const fetchEcoStats = async () => {
+      if (!user) return;
+      try {
+        const response = await userAPI.getStats();
+        if (response.data.success && response.data.stats) {
+          setEcoStats({
+            levelProgressPct: response.data.stats.levelProgressPct || 0,
+            alertsThisWeek: response.data.stats.alertsThisWeek || 0,
+          });
+        }
+      } catch (err) {
+        // Silently fail — eco stats are non-critical
+      }
+    };
+    fetchEcoStats();
+  }, [user?.points, user?.carbonSaved]);
+
 
   const handleCalculateRoute = async () => {
     if (!routeData.startPoint || !routeData.endPoint) {
@@ -818,6 +787,12 @@ const getAlertTypeColor = (type: string) => {
         }
         
         toast.success('Route calculated successfully! 🎉');
+
+        // PHASE 3: Store distance and show travel confirmation
+        const distKm = parseFloat((route.distance / 1000).toFixed(1));
+        setRouteDistanceKm(distKm);
+        setShowTravelConfirm(true);
+        setTravelSuccess(null);
       } else {
         console.error('❌ No routes found in OSRM response');
         toast.error('Could not calculate route. Please try again.');
@@ -936,6 +911,26 @@ const getAlertTypeColor = (type: string) => {
             }
           }
         }
+      });
+
+      // PHASE 3: Listen for upvote updates
+      newSocket.on('alert:upvoted', (data: any) => {
+        setRouteAlerts(prev => prev.map(a => 
+          (a._id || a.id) === data.alertId ? { ...a, upvotes: data.upvoteCount } : a
+        ));
+        setRadiusAlerts(prev => prev.map(a => 
+          (a._id || a.id) === data.alertId ? { ...a, upvotes: data.upvoteCount } : a
+        ));
+      });
+
+      // PHASE 3: Listen for comment updates
+      newSocket.on('alert:comment:new', (data: any) => {
+        setRouteAlerts(prev => prev.map(a => 
+          (a._id || a.id) === data.alertId ? { ...a, comments: data.totalComments } : a
+        ));
+        setRadiusAlerts(prev => prev.map(a => 
+          (a._id || a.id) === data.alertId ? { ...a, comments: data.totalComments } : a
+        ));
       });
 
       setSocket(newSocket);
@@ -1150,6 +1145,62 @@ const getAlertTypeColor = (type: string) => {
                 {/* POLISHED: Added shimmer effect */}
                 <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700"></div>
               </button>
+
+              {/* PHASE 3: Travel Confirmation Card */}
+              <AnimatePresence>
+                {showTravelConfirm && routeDistanceKm > 0 && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 20, height: 0 }}
+                    animate={{ opacity: 1, y: 0, height: 'auto' }}
+                    exit={{ opacity: 0, y: 20, height: 0 }}
+                    className="bg-[#122620]/70 border border-[#0fb880]/20 rounded-xl p-3 mt-2"
+                  >
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-lg">🚌</span>
+                      <span className="text-sm font-bold text-white">Ready to travel?</span>
+                    </div>
+                    <p className="text-xs text-gray-300 mb-3">
+                      {routeData.startPoint} → {routeData.endPoint} (~{routeDistanceKm} km)
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleConfirmTravel}
+                        disabled={isConfirmingTrip}
+                        className="flex-1 bg-[#0fb880] hover:bg-[#0fb880]/90 disabled:bg-gray-600 text-white text-xs font-bold py-2 rounded-lg transition-colors flex items-center justify-center gap-1"
+                      >
+                        {isConfirmingTrip ? (
+                          <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                        ) : (
+                          <>
+                            <span>✓</span>
+                            <span>Yes, I'm travelling</span>
+                          </>
+                        )}
+                      </button>
+                      <button
+                        onClick={() => setShowTravelConfirm(false)}
+                        className="px-3 bg-white/10 hover:bg-white/20 text-gray-400 text-xs font-medium py-2 rounded-lg transition-colors"
+                      >
+                        Skip
+                      </button>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* PHASE 3: Travel Success Message */}
+              <AnimatePresence>
+                {travelSuccess && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    className="bg-[#0fb880]/10 border border-[#0fb880]/20 rounded-xl p-2.5 mt-2 text-center"
+                  >
+                    <span className="text-xs font-bold text-[#0fb880]">{travelSuccess}</span>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
           </div>
 
@@ -1200,14 +1251,14 @@ const getAlertTypeColor = (type: string) => {
               <div className="pt-2">
                 <div className="flex justify-between text-[10px] font-bold text-gray-400 mb-1 uppercase tracking-tighter">
                   <span>Daily Progress</span>
-                  <span className="text-[#0fb880]">82% to Level Up</span>
+                  <span className="text-[#0fb880]">{(ecoStats?.levelProgressPct || 0).toFixed(0)}% to Level Up</span>
                 </div>
                 <div className="h-2 w-full bg-white/5 rounded-full overflow-hidden">
                   <motion.div 
                     className="h-full bg-gradient-to-r from-[#0fb880]/50 to-[#0fb880] rounded-full shadow-[0_0_8px_rgba(15,184,128,0.4)]"
                     initial={{ width: 0 }}
-                    animate={{ width: '82%' }}
-                    transition={{ delay: 0.5, duration: 1, ease: 'easeOut' }}
+                    animate={{ width: `${ecoStats?.levelProgressPct || 0}%` }}
+                    transition={{ delay: 0.5, duration: 0.8, ease: 'easeOut' }}
                   ></motion.div>
                 </div>
               </div>
@@ -1466,115 +1517,14 @@ const getAlertTypeColor = (type: string) => {
         </div>
       </div>
 
-      {/* CONNECTED TO BACKEND: Report Alert Modal */}
-      <AnimatePresence>
-        {showReportModal && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-            onClick={() => setShowReportModal(false)}
-          >
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              transition={{ type: "spring", damping: 20, stiffness: 300 }}
-              className="bg-[#0a1411] border border-white/10 rounded-2xl p-6 max-w-md w-full"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                  <span className="material-symbols-outlined text-[#0fb880]">report</span>
-                  Report Alert
-                </h3>
-                <button
-                  onClick={() => setShowReportModal(false)}
-                  className="text-gray-400 hover:text-white transition-colors"
-                >
-                  <span className="material-symbols-outlined">close</span>
-                </button>
-              </div>
-
-              <div className="space-y-4">
-                <div>
-                  <label className="text-xs text-gray-400 font-medium uppercase tracking-wider mb-2 block">
-                    Route Details
-                  </label>
-                  <div className="bg-[#122620]/50 border border-white/10 rounded-xl px-3 py-2 text-sm text-gray-300">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="w-2 h-2 rounded-full bg-[#0fb880]"></span>
-                      <span>From: {routeData.startPoint}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-red-500"></span>
-                      <span>To: {routeData.endPoint}</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-xs text-gray-400 font-medium uppercase tracking-wider mb-2 block">
-                    Alert Message
-                  </label>
-                  <textarea
-                    value={reportMessage}
-                    onChange={(e) => setReportMessage(e.target.value)}
-                    placeholder="Describe the traffic issue, road condition, or any alert..."
-                    className="w-full bg-[#122620]/50 border border-white/10 rounded-xl px-3 py-2 text-sm focus:ring-1 focus:ring-[#0fb880] focus:border-[#0fb880] outline-none transition-all text-white focus:bg-[#122620]/70 resize-none"
-                    rows={3}
-                    maxLength={200}
-                  />
-                  <div className="flex justify-between items-center mt-1">
-                    <span className="text-xs text-gray-500">
-                      {reportMessage.length}/200 characters
-                    </span>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-xs text-gray-400 font-medium uppercase tracking-wider mb-2 block">
-                    Alert Type
-                  </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {[
-                      { id: 'traffic', label: 'Traffic', icon: 'traffic' },
-                      { id: 'accident', label: 'Accident', icon: 'crash_alert' },
-                      { id: 'construction', label: 'Construction', icon: 'construction' },
-                      { id: 'weather', label: 'Weather', icon: 'thunderstorm' }
-                    ].map((type) => (
-                      <button
-                        key={type.id}
-                        className="bg-[#122620]/50 border border-white/10 rounded-xl px-3 py-2 text-sm text-gray-300 hover:border-[#0fb880]/50 hover:text-[#0fb880] transition-all flex items-center gap-2"
-                      >
-                        <span className="material-symbols-outlined text-xs">{type.icon}</span>
-                        {type.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="flex gap-3 pt-2">
-                  <button
-                    onClick={() => setShowReportModal(false)}
-                    className="flex-1 bg-gray-500/20 hover:bg-gray-500/30 text-gray-400 font-medium py-2 rounded-xl transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={() => handleSubmitReport(reportMessage)}
-                    disabled={!reportMessage.trim()}
-                    className="flex-1 bg-[#0fb880] hover:bg-[#0fb880]/90 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-medium py-2 rounded-xl transition-colors"
-                  >
-                    Report Alert
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* PHASE 3: Shared Report Alert Modal */}
+      <ReportAlertModal
+        isOpen={showReportModal}
+        onClose={() => setShowReportModal(false)}
+        routeFrom={routeData.startPoint || undefined}
+        routeTo={routeData.endPoint || undefined}
+        startCoords={routeData.startCoords || undefined}
+      />
     </div>
   );
 }
