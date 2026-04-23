@@ -125,80 +125,92 @@ exports.getAlerts = async (req, res) => {
 };
 
 exports.upvoteAlert = async (req, res) => {
-    const alert = await Report.findById(req.params.id);
-    if (!alert){
-        return res.status(404).json({success: false, message: "Alert not found"});
-    }
-
-    const userId = req.user.id;
-    const io = req.app.get('io');
-
-    // Toggle upvote using array
-    const upvotesArray = alert.upvotes || [];
-    const alreadyUpvoted = upvotesArray.some(id => id.toString() === userId);
-
-    if (alreadyUpvoted) {
-        // Remove upvote
-        alert.upvotes = upvotesArray.filter(id => id.toString() !== userId);
-    } else {
-        // Add upvote
-        alert.upvotes.push(userId);
-        
-        // Award 2 points to the alert's original reporter (if not self)
-        const reporterId = alert.reportedBy.toString();
-        if (reporterId !== userId) {
-            await User.findByIdAndUpdate(reporterId, { $inc: { points: 2, carbonSaved: 0.005 } });
+    try {
+        const alert = await Report.findById(req.params.id);
+        if (!alert){
+            return res.status(404).json({success: false, message: "Alert not found"});
         }
-    }
 
-    alert.upvoteCount = alert.upvotes.length;
-    await alert.save();
+        // ── CORRUPTION GUARD ──────────────────────────────────────────
+        // Fix corrupt upvotes field on this specific document before proceeding
+        if (!Array.isArray(alert.upvotes)) {
+            alert.upvotes = [];
+        }
+        // ─────────────────────────────────────────────────────────────
 
-    //? if 5 upvotes, alert is verified — award bonus to reporter
-    if (alert.upvotes.length === 5) {
-        const reporterId = alert.reportedBy.toString();
-        await User.findByIdAndUpdate(reporterId, {
-            $inc: { honestyScore: 5, carbonSaved: 0.04 }
-        });
-        await awardPoints(reporterId, 25); // 25 points for verification
+        const userId = req.user.id;
+        const io = req.app.get('io');
 
-        const updatedReporter = await User.findById(reporterId).select('points');
-        io.to(`user:${reporterId}`).emit('points:earned', {
-            points: 25,
-            reason: 'Alert verified by community',
-            total: updatedReporter.points
-        });
+        // Toggle upvote using array
+        const upvotesArray = alert.upvotes;
+        const alreadyUpvoted = upvotesArray.some(id => id.toString() === userId);
 
-        // Check badges for reporter
-        await checkAndAwardBadges(reporterId, io);
-    }
+        if (alreadyUpvoted) {
+            // Remove upvote
+            alert.upvotes = upvotesArray.filter(id => id.toString() !== userId);
+        } else {
+            // Add upvote
+            alert.upvotes.push(userId);
+            
+            // Award 2 points to the alert's original reporter (if not self)
+            const reporterId = alert.reportedBy.toString();
+            if (reporterId !== userId) {
+                await User.findByIdAndUpdate(reporterId, { $inc: { points: 2, carbonSaved: 0.005 } });
+            }
+        }
 
-    // Award verifier points (if not self)
-    if (req.user && req.user.id && !alreadyUpvoted) {
-        const verifierId = req.user.id;
-        if (verifierId !== alert.reportedBy.toString()) {
-            await awardPoints(verifierId, 5); // 5 points for verifying
-            const updatedVerifier = await User.findById(verifierId).select('points');
-            io.to(`user:${verifierId}`).emit('points:earned', {
-                points: 5,
-                reason: 'Verified an alert',
-                total: updatedVerifier.points
+        alert.upvoteCount = alert.upvotes.length;
+        await alert.save();
+
+        //? if 5 upvotes, alert is verified — award bonus to reporter
+        if (alert.upvotes.length === 5) {
+            const reporterId = alert.reportedBy.toString();
+            await User.findByIdAndUpdate(reporterId, {
+                $inc: { honestyScore: 5, carbonSaved: 0.04 }
             });
+            await awardPoints(reporterId, 25); // 25 points for verification
+
+            const updatedReporter = await User.findById(reporterId).select('points');
+            io.to(`user:${reporterId}`).emit('points:earned', {
+                points: 25,
+                reason: 'Alert verified by community',
+                total: updatedReporter.points
+            });
+
+            // Check badges for reporter
+            await checkAndAwardBadges(reporterId, io);
         }
+
+        // Award verifier points (if not self)
+        if (req.user && req.user.id && !alreadyUpvoted) {
+            const verifierId = req.user.id;
+            if (verifierId !== alert.reportedBy.toString()) {
+                await awardPoints(verifierId, 5); // 5 points for verifying
+                const updatedVerifier = await User.findById(verifierId).select('points');
+                io.to(`user:${verifierId}`).emit('points:earned', {
+                    points: 5,
+                    reason: 'Verified an alert',
+                    total: updatedVerifier.points
+                });
+            }
+        }
+
+        // Emit upvote event to all connected clients
+        io.emit('alert:upvoted', {
+            alertId: alert._id,
+            upvoteCount: alert.upvotes.length,
+            upvotes: alert.upvotes
+        });
+
+        res.json({
+            success: true,
+            upvotes: alert.upvotes.length,
+            userUpvoted: !alreadyUpvoted
+        });
+    } catch (err) {
+        console.error('upvoteAlert error:', err.message);
+        return res.status(500).json({ success: false, message: err.message });
     }
-
-    // Emit upvote event to all connected clients
-    io.emit('alert:upvoted', {
-        alertId: alert._id,
-        upvoteCount: alert.upvotes.length,
-        upvotes: alert.upvotes
-    });
-
-    res.json({
-        success: true,
-        upvotes: alert.upvotes.length,
-        userUpvoted: !alreadyUpvoted
-    });
 };
 
 // POST /api/alerts/:id/comments — add a comment

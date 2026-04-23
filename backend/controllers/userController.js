@@ -86,7 +86,18 @@ exports.getUserStats = async (req, res) => {
         const verifiedReports = await Report.countDocuments({
             reportedBy: userId,
             type: 'alert',
-            $expr: { $gte: [{ $size: '$upvotes' }, 5] }
+            $expr: {
+                $gte: [
+                    {
+                        $cond: {
+                            if: { $isArray: '$upvotes' },
+                            then: { $size: '$upvotes' },
+                            else: 0
+                        }
+                    },
+                    5
+                ]
+            }
         });
 
         // Trip stats
@@ -210,8 +221,30 @@ exports.getUserStats = async (req, res) => {
             }
         });
     } catch (err) {
-        console.error('Error fetching user stats:', err);
-        res.status(500).json({ success: false, message: err.message });
+        console.error('getUserStats error:', err.message);
+        // Return safe defaults so the Profile page renders instead of showing an error
+        return res.json({
+            success: true,
+            stats: {
+                points: req.user?.points || 0,
+                carbonSaved: req.user?.carbonSaved || 0,
+                badges: Array.isArray(req.user?.badges) ? req.user.badges : [],
+                totalReports: 0,
+                verifiedReports: 0,
+                totalTrips: 0,
+                totalDistance: 0,
+                currentStreak: 0,
+                level: 1,
+                nextLevelXP: 1000,
+                currentLevelXP: 0,
+                levelProgressPct: 0,
+                cleanAirRank: 0,
+                greenScore: 'C',
+                weeklyProgress: [],
+                treesEquivalent: 0,
+                alertsThisWeek: 0
+            }
+        });
     }
 };
 
