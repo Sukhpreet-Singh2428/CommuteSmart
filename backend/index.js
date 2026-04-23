@@ -13,61 +13,72 @@ connectDB();
 const app = express();
 const server = http.createServer(app);
 
-//? Initialize Socket.io
-const io = socketIo(server, {
-  cors: {
-    origin: [
-      "http://localhost:3000",
-      "https://commute-smart.vercel.app"
-    ],
-    credentials: true
-  }
-});
-
-//? Middleware
-app.use(express.json());
-
-app.use(cookieParser());
-
-const allowedOrigins = [
+// ─── CORS — must be the FIRST middleware ────────────────────────────────────
+const ALLOWED_ORIGINS = [
   'http://localhost:3000',
   'http://localhost:5173',
+  'https://commute-smart.vercel.app',
   process.env.CLIENT_URL,
   process.env.CLIENT_URL_PREVIEW,
 ].filter(Boolean);
 
-if (allowedOrigins.length === 2) {
-  // Fallback if env vars not set
-  allowedOrigins.push('https://commute-smart.vercel.app');
-}
+// Deduplicate (in case CLIENT_URL is the same as the hardcoded Vercel URL)
+const uniqueOrigins = [...new Set(ALLOWED_ORIGINS)];
 
-app.use(cors({
+const corsOptions = {
   origin: function (origin, callback) {
+    // No origin = server-to-server, Postman, mobile — allow
     if (!origin) return callback(null, true);
-    if (allowedOrigins.includes(origin)) {
-      return callback(null, true);
-    }
-    return callback(new Error('CORS: origin not allowed: ' + origin));
+    if (uniqueOrigins.includes(origin)) return callback(null, true);
+    console.error('CORS blocked origin:', origin);
+    return callback(new Error('Not allowed by CORS'));
   },
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Cookie'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
   credentials: true,
-  exposedHeaders: ['Set-Cookie']
-}));
+  optionsSuccessStatus: 200, // Some browsers (IE11) choke on 204
+};
 
-// Explicitly handle OPTIONS preflight for all routes
-app.options('*', cors({
-  origin: function (origin, callback) {
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.includes(origin)) return callback(null, true);
-    return callback(new Error('CORS: origin not allowed: ' + origin));
-  },
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Cookie'],
-  credentials: true,
-}));
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions)); // Handle ALL preflight requests
+
+// Belt-and-suspenders: manually set CORS headers on every response
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (uniqueOrigins.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  }
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+
+  // Respond to preflight immediately
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+  next();
+});
+// ────────────────────────────────────────────────────────────────────────────
+
+//? Other Middleware
+app.use(express.json());
+app.use(cookieParser());
+
+//? Initialize Socket.io
+const io = socketIo(server, {
+  cors: {
+    origin: uniqueOrigins,
+    credentials: true
+  }
+});
 
 app.set('io', io);
+
+// ─── Debug endpoint — remove after confirming CORS works ────────────────────
+app.get('/api/cors-test', (req, res) => {
+  res.json({ corsOrigins: uniqueOrigins, message: 'CORS config loaded' });
+});
+// ────────────────────────────────────────────────────────────────────────────
 
 //? Routes
 const authRoutes = require('./routes/authRoutes');
@@ -119,4 +130,5 @@ const PORT = process.env.PORT || 5000;
 
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
+  console.log('Allowed CORS origins:', uniqueOrigins);
 });
