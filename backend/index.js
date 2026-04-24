@@ -40,7 +40,7 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-app.options('/(.*)', cors(corsOptions)); // Handle ALL preflight requests
+
 
 // Belt-and-suspenders: manually set CORS headers on every response
 app.use((req, res, next) => {
