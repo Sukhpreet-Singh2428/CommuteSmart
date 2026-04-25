@@ -59,10 +59,14 @@ export interface AlertData {
   };
   vehicleId?: string;
   upvotes: number;
+  userUpvoted?: boolean;
+  commentsCount?: number;
   reportedBy: {
     _id: string;
     email: string;
     name?: string;
+    username?: string;
+    profilePhoto?: string;
   };
   timeStamp: string;
   // Transformed fields for UI

@@ -24,6 +24,13 @@ const getDistanceKm = (lat1: number, lon1: number, lat2: number, lon2: number) =
   return R * c;
 };
 
+// Safe helper to always get upvote count as a number
+const getLikeCount = (upvotes: any): number => {
+  if (typeof upvotes === 'number') return upvotes;
+  if (Array.isArray(upvotes)) return upvotes.length;
+  return 0;
+};
+
 const punjabAlerts = [
   {
     id: 1,
@@ -150,7 +157,7 @@ const formatTimeAgo = (createdAt: string) => {
 
 const filterOptions = [
   { id: 'all', label: 'All Updates', icon: 'dynamic_feed' },
-  { id: 'verified', label: 'Verified', icon: 'verified', count: 12 },
+  { id: 'verified', label: 'Verified', icon: 'verified' },
   { id: 'nearby', label: 'Nearby', icon: 'location_on' },
   { id: 'recent', label: 'Recent', icon: 'history' },
 ];
@@ -175,11 +182,15 @@ export function Alerts() {
   const [challengeJoined, setChallengeJoined] = useState(() => {
     try { return JSON.parse(localStorage.getItem('commuteSmart_challenge') || 'false'); } catch { return false; }
   });
+  const [shareCopied, setShareCopied] = useState<string | null>(null);
 
   // CONNECTED TO BACKEND: Live data hooks
   const { stats: liveStats, loading: statsLoading } = useLiveStats();
   const { areas: trendingAreas, loading: trendingLoading } = useTrendingAreas();
   const { contributors: topContributors, loading: contributorsLoading } = useTopContributors(3);
+
+  // Dynamic verified count from fetched alerts
+  const verifiedCount = alerts.filter((a: any) => a.verified === true).length;
 
   // CONNECTED TO BACKEND: Initialize Socket.io for real-time alerts
   useEffect(() => {
@@ -282,9 +293,9 @@ export function Alerts() {
           type: alert.type || 'community',
           icon: getAlertIcon(alert.type || 'community'),
           iconColor: getAlertIconColor(alert.type || 'community'),
-          verified: (alert.upvotes || 0) >= 5,
-          upvotes: alert.upvotes || 0,
-          comments: 0,
+          verified: getLikeCount(alert.upvotes) >= 5,
+          upvotes: getLikeCount(alert.upvotes),
+          comments: Array.isArray(alert.comments) ? alert.comments.length : (alert.commentsCount || 0),
           liked: false,
           createdAt: alert.timeStamp || alert.createdAt || new Date().toISOString()
         }));
@@ -350,29 +361,59 @@ export function Alerts() {
   // CONNECTED TO BACKEND: Handle upvote with API call
   const handleUpvote = async (alertId: string) => {
     try {
-      await alertsAPI.upvoteAlert(alertId);
-      
+      const response = await alertsAPI.upvoteAlert(alertId);
+      const { upvotes, userUpvoted } = response.data;
+
       setUpvotedAlerts(prev => {
         const newSet = new Set(prev);
-        if (newSet.has(alertId)) {
-          newSet.delete(alertId);
-          // Upvote removed silently (no toast for minor actions)
-        } else {
+        if (userUpvoted) {
           newSet.add(alertId);
-          // Upvote added silently (no toast for minor actions)
+        } else {
+          newSet.delete(alertId);
         }
         return newSet;
       });
 
-      // Update alert upvote count locally
+      // Update alert upvote count using the integer returned from backend
       setAlerts(prev => prev.map(alert => 
-        alert._id === alertId 
-          ? { ...alert, upvotes: upvotedAlerts.has(alertId) ? alert.upvotes - 1 : alert.upvotes + 1 }
+        (alert._id || alert.id) === alertId 
+          ? { ...alert, upvotes: typeof upvotes === 'number' ? upvotes : getLikeCount(upvotes) }
           : alert
       ));
     } catch (error: any) {
       console.error('Error upvoting alert:', error);
       toast.error('Failed to upvote alert');
+    }
+  };
+
+  // Share alert via Web Share API or clipboard fallback
+  const handleShare = async (alert: any) => {
+    const alertType = alert.alertType || alert.type || 'Alert';
+    const typeLabel = alertType.charAt(0).toUpperCase() + alertType.slice(1);
+    const message = alert.message || alert.title || 'Traffic alert';
+    const area = alert.area || (typeof alert.location === 'string' ? alert.location : '') || 'Punjab';
+    const shareText = `\u{1F6A8} ${typeLabel} Alert in ${area}: ${message} — Reported on CommuteSmart`;
+    const shareUrl = `${window.location.origin}/alerts`;
+
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: `CommuteSmart Alert — ${typeLabel}`,
+          text: shareText,
+          url: shareUrl,
+        });
+      } catch (err: any) {
+        if (err.name !== 'AbortError') console.error('Share error:', err);
+      }
+    } else {
+      try {
+        await navigator.clipboard.writeText(`${shareText}\n${shareUrl}`);
+        setShareCopied(alert._id || alert.id);
+        toast.success('Link copied to clipboard!');
+        setTimeout(() => setShareCopied(null), 2000);
+      } catch {
+        console.warn('Clipboard not available');
+      }
     }
   };
 
@@ -571,14 +612,14 @@ export function Alerts() {
                 >
                   <span className="material-symbols-outlined text-sm">{option.icon}</span>
                   {option.label}
-                  {option.count && (
+                  {option.id === 'verified' && verifiedCount > 0 && (
                     <motion.span 
                       className="text-xs bg-white/10 px-1.5 py-0.5 rounded-full"
                       initial={{ scale: 0 }}
                       animate={{ scale: 1 }}
                       transition={{ type: 'spring', stiffness: 500 }}
                     >
-                      {option.count}
+                      {verifiedCount}
                     </motion.span>
                   )}
                 </motion.button>
@@ -677,7 +718,7 @@ export function Alerts() {
                         <div className="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center text-white text-[10px] font-bold border border-white/20">
                           {alert.reporter?.email?.charAt(0).toUpperCase() || 'A'}
                         </div>
-                        <span className="text-xs text-gray-400">Reported by {alert.reporter?.email || 'Anonymous'}</span>
+                        <span className="text-xs text-gray-400">Reported by {alert.reporter?.name || alert.reporter?.username || alert.reporter?.email?.split('@')[0] || 'Anonymous'}</span>
                       </div>
                       <div className="flex items-center gap-4">
                         <button 
@@ -696,7 +737,7 @@ export function Alerts() {
                           >
                             {upvotedAlerts.has(alert._id) ? 'favorite' : 'favorite_border'}
                           </motion.span>
-                          <span className="text-xs font-medium">{alert.upvotes || 0}</span>
+                          <span className="text-xs font-medium">{getLikeCount(alert.upvotes)}</span>
                         </button>
                         <button 
                           onClick={(e) => {
@@ -716,13 +757,21 @@ export function Alerts() {
                           </motion.span>
                           <span className="text-xs font-medium">{alert.comments || 0}</span>
                         </button>
-                        <button className="flex items-center gap-1.5 text-gray-400 hover:text-white transition-colors group">
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleShare(alert);
+                          }}
+                          className={`flex items-center gap-1.5 transition-colors group ${
+                            shareCopied === (alert._id || alert.id) ? 'text-[#0fb880]' : 'text-gray-400 hover:text-white'
+                          }`}
+                        >
                           <motion.span 
                             className="material-symbols-outlined text-lg"
                             whileHover={{ scale: 1.2, rotate: 15 }}
                             whileTap={{ scale: 0.8 }}
                           >
-                            share
+                            {shareCopied === (alert._id || alert.id) ? 'check_circle' : 'share'}
                           </motion.span>
                         </button>
                         {/* CONNECTED TO BACKEND: Delete button for own alerts */}

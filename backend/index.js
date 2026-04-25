@@ -55,18 +55,6 @@ app.use(cors({
   exposedHeaders: ['Set-Cookie']
 }));
 
-// Explicitly handle OPTIONS preflight for all routes
-app.options('*', cors({
-  origin: function (origin, callback) {
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.includes(origin)) return callback(null, true);
-    return callback(new Error('CORS: origin not allowed: ' + origin));
-  },
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Cookie'],
-  credentials: true,
-}));
-
 app.set('io', io);
 
 //? Routes
