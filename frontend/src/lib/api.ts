@@ -109,6 +109,14 @@ export const authAPI = {
   // Check if user is authenticated
   me: () =>
     api.get('/api/auth/me'),
+
+  // Forgot password OTP flow
+  forgotPassword: (email: string) =>
+    api.post('/api/auth/forgot-password', { email }),
+  verifyOtp: (email: string, otp: string) =>
+    api.post('/api/auth/verify-otp', { email, otp }),
+  resetPassword: (resetToken: string, newPassword: string) =>
+    api.post('/api/auth/reset-password', { resetToken, newPassword }),
 };
 
 export const locationAPI = {
