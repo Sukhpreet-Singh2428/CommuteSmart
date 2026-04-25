@@ -1,13 +1,12 @@
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const dotenv = require('dotenv');
 const cookieParser = require('cookie-parser');
 const http = require('http');
 const socketIo = require('socket.io');
 
 const connectDB = require('./config/db');
 
-dotenv.config();
 connectDB();
 
 const app = express();
@@ -63,6 +62,10 @@ app.use((req, res, next) => {
 //? Other Middleware
 app.use(express.json());
 app.use(cookieParser());
+
+// Passport initialization for OAuth
+const passport = require('./config/passport');
+app.use(passport.initialize());
 
 //? Initialize Socket.io
 const io = socketIo(server, {

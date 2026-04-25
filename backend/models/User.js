@@ -30,7 +30,34 @@ const userSchema = new mongoose.Schema({
     },
     password: {
         type: String,
-        required: true
+        required: function() { return this.authProvider === 'local'; }
+    },
+    googleId: {
+        type: String,
+        sparse: true,
+        default: null
+    },
+    appleId: {
+        type: String,
+        sparse: true,
+        default: null
+    },
+    authProvider: {
+        type: String,
+        enum: ['local', 'google', 'apple'],
+        default: 'local'
+    },
+    resetOtp: {
+        type: String,
+        default: null
+    },
+    resetOtpExpiry: {
+        type: Date,
+        default: null
+    },
+    resetOtpAttempts: {
+        type: Number,
+        default: 0
     },
     favourites: [{type: String}],
     points: {

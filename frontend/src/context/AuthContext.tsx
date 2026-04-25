@@ -15,11 +15,13 @@ interface User {
   badges: string[];
   honestyScore: number;
   favourites?: string[];
+  authProvider?: 'local' | 'google' | 'github';
 }
 
 interface AuthContextType {
   user: User | null;
   login: (email: string, password: string) => Promise<void>;
+  loginWithToken: (token: string, userData: User) => void;
   register: (email: string, password: string, name?: string) => Promise<void>;
   updateUser: (userData: Partial<User>) => void;
   logout: () => void;
@@ -33,91 +35,50 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Load user data from localStorage on mount
+  // On mount: load from localStorage immediately for fast UI, then
+  // ALWAYS verify with backend via /api/auth/me (critical for OAuth flow)
   useEffect(() => {
-    const loadUserFromStorage = () => {
+    // Load cached user for instant UI (non-blocking)
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        const storedUser = localStorage.getItem('commuteSmart_user');
+        if (storedUser) {
+          setUser(JSON.parse(storedUser));
+          console.log('Loaded user from localStorage (cached)');
+        }
+      }
+    } catch (error) {
+      console.error('Error loading user from localStorage:', error);
+      try { localStorage.removeItem('commuteSmart_user'); } catch {}
+    }
+
+    // Always verify with backend — this is what makes OAuth work
+    // (cookie is set by OAuth callback, localStorage is empty)
+    const verifyAuth = async () => {
       try {
-        // Check if localStorage is available
-        if (typeof window !== 'undefined' && window.localStorage) {
-          const storedUser = localStorage.getItem('commuteSmart_user');
-          if (storedUser) {
-            const userData = JSON.parse(storedUser);
-            setUser(userData);
-            console.log('Loaded user from localStorage:', userData);
-          }
+        const response = await authAPI.me();
+        if (response.data.success && response.data.user) {
+          setUser(response.data.user);
+          try {
+            localStorage.setItem('commuteSmart_user', JSON.stringify(response.data.user));
+            console.log('Auth verified with backend, user synced');
+          } catch {}
         }
-      } catch (error) {
-        console.error('Error loading user from localStorage:', error);
-        // Try to clear corrupted data
-        try {
-          if (typeof window !== 'undefined' && window.localStorage) {
-            localStorage.removeItem('commuteSmart_user');
-          }
-        } catch (clearError) {
-          console.error('Failed to clear localStorage:', clearError);
-        }
+      } catch {
+        // No valid cookie — clear cached user if no backend auth
+        setUser(null);
+        try { localStorage.removeItem('commuteSmart_user'); } catch {}
+        console.log('No backend auth, cleared user');
       } finally {
         setIsLoading(false);
       }
     };
 
-    loadUserFromStorage();
+    verifyAuth();
   }, []);
 
-  // Only check authentication status with backend if we have stored user data
-  useEffect(() => {
-    const storedUser = typeof window !== 'undefined' && window.localStorage ? 
-      localStorage.getItem('commuteSmart_user') : null;
-    
-    if (storedUser) {
-      // If we have stored user, verify with backend (don't duplicate — first useEffect already loaded from localStorage)
-      verifyAuthWithBackend();
-    }
-  }, []);
 
-  // Check authentication status with backend
-  const checkAuth = async () => {
-    try {
-      const response = await authAPI.me();
-      
-      if (response.data.success && response.data.user) {
-        setUser(response.data.user);
-        // Store user data in localStorage for persistence
-        localStorage.setItem('commuteSmart_user', JSON.stringify(response.data.user));
-      }
-    } catch (error) {
-      // User is not authenticated, clear state and localStorage
-      setUser(null);
-      localStorage.removeItem('commuteSmart_user');
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
-  // Verify auth with backend without clearing localStorage on failure
-  const verifyAuthWithBackend = async () => {
-    try {
-      const response = await authAPI.me();
-      
-      if (response.data.success && response.data.user) {
-        setUser(response.data.user);
-        // Update localStorage with fresh data
-        try {
-          if (typeof window !== 'undefined' && window.localStorage) {
-            localStorage.setItem('commuteSmart_user', JSON.stringify(response.data.user));
-            console.log('Backend verification successful, updated user data in localStorage');
-          }
-        } catch (storageError) {
-          console.error('Failed to update localStorage:', storageError);
-        }
-      } else {
-        console.log('Backend verification failed, but keeping localStorage data');
-      }
-    } catch (error) {
-      console.log('Backend verification failed, but keeping localStorage data:', error);
-      // Don't clear localStorage on backend failure - user might still be valid
-    }
-  };
 
   const login = useCallback(async (email: string, password: string) => {
     try {
@@ -140,6 +101,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const errorMessage = error.response?.data?.message || 'Login failed';
       throw new Error(errorMessage);
     }
+  }, []);
+
+  // OAuth login — sets user state directly from token + user data (no API call)
+  const loginWithToken = useCallback((token: string, userData: User) => {
+    setUser(userData);
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        localStorage.setItem('commuteSmart_user', JSON.stringify(userData));
+        localStorage.setItem('commuteSmart_token', token);
+        console.log('Stored OAuth user data in localStorage');
+      }
+    } catch (storageError) {
+      console.error('Failed to store OAuth user data:', storageError);
+    }
+    toast.success('Login successful! 🎉');
   }, []);
 
   const register = useCallback(async (email: string, password: string, name?: string) => {
@@ -206,6 +182,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       value={{
         user,
         login,
+        loginWithToken,
         register,
         logout,
         updateUser,

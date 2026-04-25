@@ -11,6 +11,7 @@ import { Dashboard } from './pages/Dashboard';
 import { Alerts } from './pages/Alerts';
 import { Profile } from './pages/Profile';
 import { OfflineIndicator } from './components/OfflineIndicator';
+import AuthCallback from './pages/AuthCallback';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const pageVariants = {
@@ -39,6 +40,7 @@ function AppRoutes() {
       <Route path="/" element={<Landing />} />
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
+      <Route path="/auth/callback" element={<AuthCallback />} />
       <Route
         path="/dashboard"
         element={
