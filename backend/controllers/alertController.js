@@ -104,13 +104,21 @@ exports.getAlerts = async (req, res) => {
     const limit = parseInt(req.query.limit) || 20;
     const skip = (page - 1) * limit;
 
-    const alerts = await Report.find({type: 'alert'})
+    const alertsDocs = await Report.find({type: 'alert'})
         .populate('reportedBy', 'email name username profilePhoto')
         .sort({timeStamp: -1})
         .skip(skip)
-        .limit(limit);
+        .limit(limit)
+        .lean();
     
     const total = await Report.countDocuments({type: 'alert'});
+
+    // Transform upvotes array to integer count for frontend consumption
+    const alerts = alertsDocs.map(alert => ({
+        ...alert,
+        upvotes: Array.isArray(alert.upvotes) ? alert.upvotes.length : (typeof alert.upvotes === 'number' ? alert.upvotes : 0),
+        commentsCount: Array.isArray(alert.comments) ? alert.comments.length : 0,
+    }));
     
     res.json({
         success: true, 
