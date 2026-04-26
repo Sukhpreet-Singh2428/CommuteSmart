@@ -4,6 +4,7 @@ import Confetti from 'react-confetti';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 import ForgotPasswordModal from '../components/ForgotPasswordModal';
+import EmailVerificationModal from '../components/EmailVerificationModal';
 
 export function Login() {
   const [email, setEmail] = useState('');
@@ -12,11 +13,12 @@ export function Login() {
   const [loading, setLoading] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
   const [forgotOpen, setForgotOpen] = useState(false);
+  const [verifyModalOpen, setVerifyModalOpen] = useState(false);
   const [oauthError, setOauthError] = useState('');
   const { login } = useAuth();
   const navigate = useNavigate();
 
-  const BACKEND_URL = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5000';
+  const BACKEND_URL = (import.meta.env.VITE_API_URL || 'http://localhost:5000').replace(/\/api\/?$/, '');
 
   // Detect OAuth error from URL query params
   useEffect(() => {
@@ -37,12 +39,16 @@ export function Login() {
     e.preventDefault();
     setLoading(true);
     try {
-      await login(email, password);
-      setShowConfetti(true);
-      toast.success('Welcome back!');
-      setTimeout(() => setShowConfetti(false), 2500);
-      // Navigate to dashboard on successful login
-      navigate('/dashboard');
+      const response = await login(email, password);
+      if (response && response.requiresVerification) {
+        setVerifyModalOpen(true);
+      } else {
+        setShowConfetti(true);
+        toast.success('Welcome back!');
+        setTimeout(() => setShowConfetti(false), 2500);
+        // Navigate to dashboard on successful login
+        navigate('/dashboard');
+      }
     } catch (error: unknown) {
       // Show specific backend error message
       const errorMessage = error instanceof Error ? error.message : 'Login failed';
@@ -275,6 +281,18 @@ export function Login() {
       </div>
     </div>
     <ForgotPasswordModal isOpen={forgotOpen} onClose={() => setForgotOpen(false)} />
+    <EmailVerificationModal 
+      isOpen={verifyModalOpen} 
+      email={email} 
+      onClose={() => setVerifyModalOpen(false)} 
+      onSuccess={() => {
+        setVerifyModalOpen(false);
+        setShowConfetti(true);
+        toast.success('Welcome back!');
+        setTimeout(() => setShowConfetti(false), 2500);
+        navigate('/dashboard');
+      }}
+    />
     </>
   );
 }

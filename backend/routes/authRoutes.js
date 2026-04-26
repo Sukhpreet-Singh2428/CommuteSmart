@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 // const {signup, login} = require('../controllers/authController');
-const {signup, login, getMe, logout, forgotPassword, verifyOtp, resetPassword, buildOAuthRedirect} = require('../controllers/authController');
+const {signup, login, getMe, logout, forgotPassword, verifyOtp, resetPassword, verifyEmail, resendVerification, buildOAuthRedirect} = require('../controllers/authController');
 const { protect } = require('../middleware/authMiddleware');
 const passport = require('../config/passport');
 
@@ -14,6 +14,10 @@ router.post('/logout', protect, logout);
 router.post('/forgot-password', forgotPassword);
 router.post('/verify-otp', verifyOtp);
 router.post('/reset-password', resetPassword);
+
+// Email verification flow
+router.post('/verify-email', verifyEmail);
+router.post('/resend-verification', resendVerification);
 
 
 const jwt = require('jsonwebtoken');

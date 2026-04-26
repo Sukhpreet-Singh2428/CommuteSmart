@@ -20,9 +20,9 @@ interface User {
 
 interface AuthContextType {
   user: User | null;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<any | void>;
   loginWithToken: (token: string, userData: User) => void;
-  register: (email: string, password: string, name?: string) => Promise<void>;
+  register: (email: string, password: string, name?: string) => Promise<any | void>;
   updateUser: (userData: Partial<User>) => void;
   logout: () => void;
   isAuthenticated: boolean;
@@ -84,6 +84,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const response = await authAPI.login(email, password);
       
+      // If verification is required, don't set user, just return the data to the component
+      if (response.data.requiresVerification) {
+        return response.data;
+      }
+
       if (response.data.success && response.data.user) {
         setUser(response.data.user);
         // Store user data in localStorage for persistence
@@ -97,6 +102,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
         toast.success('Login successful! 🎉');
       }
+      return response.data;
     } catch (error: any) {
       const errorMessage = error.response?.data?.message || 'Login failed';
       throw new Error(errorMessage);
@@ -122,6 +128,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const response = await authAPI.register(email, password, name);
       
+      // If verification is required, don't set user, just return the data to the component
+      if (response.data.requiresVerification) {
+        return response.data;
+      }
+
       if (response.data.success && response.data.user) {
         setUser(response.data.user);
         // Store user data in localStorage for persistence
@@ -135,6 +146,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
         toast.success('Registration successful! 🎉');
       }
+      return response.data;
     } catch (error: any) {
       const errorMessage = error.response?.data?.message || 'Registration failed';
       throw new Error(errorMessage);

@@ -9,7 +9,8 @@ const getBackendUrl = () => {
     console.warn('VITE_API_URL not found in environment, using default localhost');
     return 'http://localhost:5000';
   }
-  return url;
+  // Strip trailing /api or /api/ if present in the env var to prevent /api/api duplication
+  return url.replace(/\/api\/?$/, '');
 };
 
 // Create axios instance with default configuration
@@ -117,6 +118,12 @@ export const authAPI = {
     api.post('/api/auth/verify-otp', { email, otp }),
   resetPassword: (resetToken: string, newPassword: string) =>
     api.post('/api/auth/reset-password', { resetToken, newPassword }),
+
+  // Email verification flow
+  verifyEmail: (email: string, otp: string) =>
+    api.post('/api/auth/verify-email', { email, otp }),
+  resendVerification: (email: string) =>
+    api.post('/api/auth/resend-verification', { email }),
 };
 
 export const locationAPI = {
