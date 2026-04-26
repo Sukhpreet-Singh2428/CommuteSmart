@@ -15,9 +15,24 @@ passport.use(new GoogleStrategy({
       user = await User.create({
         name: profile.displayName,
         email: profile.emails[0].value,
-        password: 'oauth-google-' + profile.id,
+        googleId: profile.id,
+        authProvider: 'google',
+        emailVerified: true, // OAuth emails are pre-verified
         profilePhoto: profile.photos?.[0]?.value || '',
       });
+    } else {
+      // Migration: update existing users
+      if (!user.googleId || user.authProvider !== 'google') {
+        user.googleId = profile.id;
+        user.authProvider = 'google';
+        user.emailVerified = true;
+        
+        // Remove fake password if it exists
+        if (user.password && user.password.startsWith('oauth-')) {
+            user.password = undefined;
+        }
+        await user.save();
+      }
     }
     return done(null, user);
   } catch (err) {
@@ -40,9 +55,24 @@ passport.use(new GitHubStrategy({
       user = await User.create({
         name: profile.displayName || profile.username,
         email,
-        password: 'oauth-github-' + profile.id,
+        githubId: profile.id,
+        authProvider: 'github',
+        emailVerified: true, // OAuth emails are pre-verified
         profilePhoto: profile.photos?.[0]?.value || '',
       });
+    } else {
+      // Migration: update existing users
+      if (!user.githubId || user.authProvider !== 'github') {
+        user.githubId = profile.id;
+        user.authProvider = 'github';
+        user.emailVerified = true;
+        
+        // Remove fake password if it exists
+        if (user.password && user.password.startsWith('oauth-')) {
+            user.password = undefined;
+        }
+        await user.save();
+      }
     }
     return done(null, user);
   } catch (err) {

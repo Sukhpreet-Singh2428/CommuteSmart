@@ -204,7 +204,12 @@ const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({ isOpen, onClo
                 className={INPUT_CLASS}
               />
 
-              {error && <p style={{ color: '#ef4444', fontSize: '13px', margin: '8px 0 0' }}>{error}</p>}
+              {error && (
+                <div className={`mt-2 p-3 rounded-lg flex items-start gap-2 ${error.includes('sign-in') ? 'bg-blue-500/10 border border-blue-500/20 text-blue-400' : 'bg-red-500/10 border border-red-500/20 text-red-400'}`}>
+                  <span className="material-symbols-outlined text-sm mt-0.5">{error.includes('sign-in') ? 'info' : 'error'}</span>
+                  <p className="text-[13px] leading-tight">{error}</p>
+                </div>
+              )}
 
               <button
                 onClick={handleSendOtp}

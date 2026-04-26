@@ -8,8 +8,7 @@ const userSchema = new mongoose.Schema({
     username: {
         type: String,
         unique: true,
-        sparse: true,
-        default: null
+        sparse: true
     },
     bio: {
         type: String,
@@ -37,6 +36,11 @@ const userSchema = new mongoose.Schema({
         sparse: true,
         default: null
     },
+    githubId: {
+        type: String,
+        sparse: true,
+        default: null
+    },
     appleId: {
         type: String,
         sparse: true,
@@ -44,9 +48,36 @@ const userSchema = new mongoose.Schema({
     },
     authProvider: {
         type: String,
-        enum: ['local', 'google', 'apple'],
+        enum: ['local', 'google', 'apple', 'github'],
         default: 'local'
     },
+
+    // ── Email verification ───────────────────────────────────────
+    emailVerified: {
+        type: Boolean,
+        default: false
+    },
+    emailVerificationOTP: {
+        type: String,
+        select: false,
+        default: null
+    },
+    emailVerificationExpiry: {
+        type: Date,
+        select: false,
+        default: null
+    },
+    emailVerificationAttempts: {
+        type: Number,
+        default: 0
+    },
+    lastVerificationRequest: {
+        type: Date,
+        select: false,
+        default: null
+    },
+
+    // ── Password reset OTP ───────────────────────────────────────
     resetOtp: {
         type: String,
         default: null
