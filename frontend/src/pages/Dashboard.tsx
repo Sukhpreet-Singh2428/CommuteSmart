@@ -248,16 +248,31 @@ const getAlertTypeColor = (type: string) => {
   useEffect(() => {
     // If RouteContext has data, update local states
     if (routeData.startPoint || routeData.endPoint) {
-      
+
       // Update route center if we have coordinates
       if (routeData.startCoords && routeData.endCoords) {
         const centerLat = (routeData.startCoords[0] + routeData.endCoords[0]) / 2;
         const centerLng = (routeData.startCoords[1] + routeData.endCoords[1]) / 2;
         const center = [centerLat, centerLng] as [number, number];
         setRouteCenter(center);
-        
-        // Fetch alerts for the restored route
-        fetchRouteAlerts(center);
+
+        // Restore alerts from localStorage if available
+        const savedAlerts = localStorage.getItem('commuteSmart_routeAlerts');
+        if (savedAlerts) {
+          try {
+            const parsedAlerts = JSON.parse(savedAlerts);
+            console.log('🔄 Restoring route alerts from localStorage:', parsedAlerts.length);
+            setRouteAlerts(parsedAlerts);
+            setShowViewAllButton(parsedAlerts.length > 5);
+          } catch (error) {
+            console.error('Error parsing saved alerts:', error);
+            // Fetch alerts for the restored route using start and end coordinates
+            fetchRouteAlerts(routeData.startCoords, routeData.endCoords);
+          }
+        } else {
+          // Fetch alerts for the restored route using start and end coordinates
+          fetchRouteAlerts(routeData.startCoords, routeData.endCoords);
+        }
       }
     }
   }, [routeData.startPoint, routeData.endPoint, routeData.startCoords, routeData.endCoords]);
@@ -270,9 +285,9 @@ const getAlertTypeColor = (type: string) => {
   }, [userLocation, routeCenter]);
 
   // CONNECTED TO BACKEND: Fetch route-specific alerts with 8km radius and 4-5 limit
-  const fetchRouteAlerts = async (center: [number, number]) => {
-    if (!center || !Array.isArray(center) || center.length !== 2) {
-      console.error('❌ Invalid center coordinates provided to fetchRouteAlerts');
+  const fetchRouteAlerts = async (startCoords: [number, number], endCoords: [number, number]) => {
+    if (!startCoords || !endCoords || !Array.isArray(startCoords) || !Array.isArray(endCoords)) {
+      console.error('❌ Invalid coordinates provided to fetchRouteAlerts');
       setRouteAlerts([]);
       setShowViewAllButton(false);
       return;
@@ -280,20 +295,20 @@ const getAlertTypeColor = (type: string) => {
 
     setIsLoadingAlerts(true);
     try {
-      // Use the nearby alerts API with 8km radius
-      const response = await alertsAPI.getNearbyAlerts(center[0], center[1], 8);
-      
+      // Use the route-specific alerts API with start and end coordinates and larger radius
+      const response = await alertsAPI.getRouteAlerts(startCoords[0], startCoords[1], endCoords[0], endCoords[1], 20);
+
       if (response.data.success && response.data.alerts) {
         const alerts = response.data.alerts;
-        
+
         // Transform alerts for display with error handling
         const transformedAlerts = alerts.map((alert: any) => {
           try {
             return {
               ...alert,
               id: alert._id || alert.id || `alert-${Math.random()}`,
-              name: alert.reportedBy?.email || 'Anonymous',
-              avatar: alert.reportedBy?.email?.charAt(0).toUpperCase() || 'A',
+              name: alert.reportedBy?.name || alert.reportedBy?.email || 'Anonymous',
+              avatar: alert.reportedBy?.name?.charAt(0).toUpperCase() || alert.reportedBy?.email?.charAt(0).toUpperCase() || 'A',
               text: alert.message || 'No message available',
               time: formatTimeAgo(alert.timeStamp || alert.createdAt || new Date().toISOString()),
               user: alert.reportedBy?.email === user?.email ? 'You' : 'Community User'
@@ -311,16 +326,18 @@ const getAlertTypeColor = (type: string) => {
             };
           }
         });
-        
+
         // Sort by timestamp and limit to 4-5 most recent for Dashboard
         const sortedAlerts = transformedAlerts.sort((a: any, b: any) => {
           const aTime = new Date(a.timeStamp || a.createdAt || 0).getTime();
           const bTime = new Date(b.timeStamp || b.createdAt || 0).getTime();
           return bTime - aTime;
         });
-        
+
         const limitedAlerts = sortedAlerts.slice(0, 5);
         setRouteAlerts(limitedAlerts);
+        // Save to localStorage for persistence across navigation
+        localStorage.setItem('commuteSmart_routeAlerts', JSON.stringify(limitedAlerts));
         setShowViewAllButton(alerts.length > 5);
       } else {
         setRouteAlerts([]);
@@ -330,7 +347,7 @@ const getAlertTypeColor = (type: string) => {
       console.error('❌ Error fetching route alerts:', error);
       setRouteAlerts([]);
       setShowViewAllButton(false);
-      
+
       // Don't show toast for dashboard errors, just fail silently
     } finally {
       setIsLoadingAlerts(false);
@@ -777,10 +794,10 @@ const getAlertTypeColor = (type: string) => {
         
         console.log('🎯 Route center calculated:', routeCenter);
         setRouteCenter(routeCenter);
-        
-        // Fetch alerts with error handling
+
+        // Fetch alerts with error handling using start and end coordinates
         try {
-          await fetchRouteAlerts(routeCenter);
+          await fetchRouteAlerts(startCoords, endCoords);
         } catch (alertError) {
           console.error('⚠️ Error fetching route alerts:', alertError);
           // Don't fail the whole route calculation if alerts fail
@@ -979,6 +996,8 @@ const getAlertTypeColor = (type: string) => {
     setRouteCenter(null);
     setRouteAlerts([]);
     setRadiusAlerts([]);
+    // Clear saved route alerts from localStorage
+    localStorage.removeItem('commuteSmart_routeAlerts');
     // Also clear route in RouteContext
     clearContextRoute();
   };
