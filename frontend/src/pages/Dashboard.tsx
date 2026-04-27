@@ -197,47 +197,132 @@ const getAlertTypeColor = (type: string) => {
   return colorMap[type] || colorMap.general;
 };
 
-// CONNECTED TO BACKEND: Fetch alerts based on user location on page load
+// HELPER: Calculate distance between two points using Haversine formula (in km)
+const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+  const R = 6371; // Earth's radius in km
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+};
+
+// HELPER: Calculate distance from point to line segment (in km)
+const distanceToLineSegment = (
+  pointLat: number,
+  pointLon: number,
+  lineStartLat: number,
+  lineStartLon: number,
+  lineEndLat: number,
+  lineEndLon: number
+): number => {
+  // Calculate distances from point to line endpoints
+  const d1 = calculateDistance(pointLat, pointLon, lineStartLat, lineStartLon);
+  const d2 = calculateDistance(pointLat, pointLon, lineEndLat, lineEndLon);
+
+  // If the line segment is very short, return the minimum distance to endpoints
+  const lineLength = calculateDistance(lineStartLat, lineStartLon, lineEndLat, lineEndLon);
+  if (lineLength < 0.001) {
+    return Math.min(d1, d2);
+  }
+
+  // Calculate projection factor
+  const t = ((pointLat - lineStartLat) * (lineEndLat - lineStartLat) +
+             (pointLon - lineStartLon) * (lineEndLon - lineStartLon)) /
+            (lineLength * lineLength);
+
+  // Clamp t to [0, 1] to get the closest point on the segment
+  const clampedT = Math.max(0, Math.min(1, t));
+
+  // Calculate the closest point on the line segment
+  const closestLat = lineStartLat + clampedT * (lineEndLat - lineStartLat);
+  const closestLon = lineStartLon + clampedT * (lineEndLon - lineStartLon);
+
+  // Return distance to the closest point
+  return calculateDistance(pointLat, pointLon, closestLat, closestLon);
+};
+
+// HELPER: Check if a point is near the route polyline
+const isPointNearRoute = (
+  alertLat: number,
+  alertLon: number,
+  routePolyline: [number, number][],
+  thresholdKm: number = 3
+): boolean => {
+  if (!routePolyline || routePolyline.length < 2) {
+    return false;
+  }
+
+  // Check distance to each segment of the route
+  for (let i = 0; i < routePolyline.length - 1; i++) {
+    const [startLat, startLon] = routePolyline[i];
+    const [endLat, endLon] = routePolyline[i + 1];
+
+    const distance = distanceToLineSegment(
+      alertLat,
+      alertLon,
+      startLat,
+      startLon,
+      endLat,
+      endLon
+    );
+
+    if (distance <= thresholdKm) {
+      return true;
+    }
+  }
+
+  return false;
+};
+
+  // CONNECTED TO BACKEND: Fetch alerts based on user location on page load
   const fetchLocationBasedAlerts = async () => {
     if (!userLocation) return;
-    
+
     setIsLoadingAlerts(true);
     try {
       const response = await alertsAPI.getNearbyAlerts(userLocation[0], userLocation[1], 8);
-      
+
       if (response.data.success && response.data.alerts) {
         const alerts = response.data.alerts;
-        
+
         // Transform alerts for display
         const transformedAlerts = alerts.map((alert: any) => ({
           ...alert,
           id: alert._id || alert.id || `alert-${Math.random()}`,
-          name: alert.reportedBy?.email || 'Anonymous',
-          avatar: alert.reportedBy?.email?.charAt(0).toUpperCase() || 'A',
+          name: alert.reportedBy?.name || alert.reportedBy?.email || 'Anonymous',
+          avatar: alert.reportedBy?.name?.charAt(0).toUpperCase() || alert.reportedBy?.email?.charAt(0).toUpperCase() || 'A',
           text: alert.message || 'No message available',
           time: formatTimeAgo(alert.timeStamp || alert.createdAt || new Date().toISOString()),
           user: alert.reportedBy?.email === user?.email ? 'You' : 'Community User',
           type: alert.type || 'general',
-          severity: alert.severity || 'medium'
+          severity: alert.severity || 'medium',
+          locationText: alert.locationText || alert.area || null
         }));
-        
+
         // Sort by timestamp and limit to 5 most recent for Dashboard
         const sortedAlerts = transformedAlerts.sort((a: any, b: any) => {
           const aTime = new Date(a.timeStamp || a.createdAt || 0).getTime();
           const bTime = new Date(b.timeStamp || b.createdAt || 0).getTime();
           return bTime - aTime;
         });
-        
+
         const limitedAlerts = sortedAlerts.slice(0, 5);
         setRadiusAlerts(limitedAlerts);
+        setRouteAlerts([]); // Clear route alerts when showing nearby
         setShowViewAllButton(alerts.length > 5);
       } else {
         setRadiusAlerts([]);
+        setRouteAlerts([]);
         setShowViewAllButton(false);
       }
     } catch (error: any) {
       console.error('❌ Error fetching location-based alerts:', error);
       setRadiusAlerts([]);
+      setRouteAlerts([]);
       setShowViewAllButton(false);
     } finally {
       setIsLoadingAlerts(false);
@@ -248,16 +333,40 @@ const getAlertTypeColor = (type: string) => {
   useEffect(() => {
     // If RouteContext has data, update local states
     if (routeData.startPoint || routeData.endPoint) {
-      
+
       // Update route center if we have coordinates
       if (routeData.startCoords && routeData.endCoords) {
         const centerLat = (routeData.startCoords[0] + routeData.endCoords[0]) / 2;
         const centerLng = (routeData.startCoords[1] + routeData.endCoords[1]) / 2;
         const center = [centerLat, centerLng] as [number, number];
         setRouteCenter(center);
-        
-        // Fetch alerts for the restored route
-        fetchRouteAlerts(center);
+        setRadiusAlerts([]); // Clear nearby alerts when route is set
+
+        // Restore alerts from localStorage if available
+        const savedAlerts = localStorage.getItem('commuteSmart_routeAlerts');
+        if (savedAlerts) {
+          try {
+            const parsedAlerts = JSON.parse(savedAlerts);
+            console.log('🔄 Restoring route alerts from localStorage:', parsedAlerts.length);
+            setRouteAlerts(parsedAlerts);
+            setShowViewAllButton(parsedAlerts.length > 5);
+          } catch (error) {
+            console.error('Error parsing saved alerts:', error);
+            // Fetch alerts for the restored route using start and end coordinates and route polyline
+            fetchRouteAlerts(routeData.startCoords, routeData.endCoords, routeData.routePath);
+          }
+        } else {
+          // Fetch alerts for the restored route using start and end coordinates and route polyline
+          fetchRouteAlerts(routeData.startCoords, routeData.endCoords, routeData.routePath);
+        }
+      }
+    } else {
+      // If route is cleared, clear route alerts and restore nearby alerts
+      setRouteCenter(null);
+      setRouteAlerts([]);
+      localStorage.removeItem('commuteSmart_routeAlerts');
+      if (userLocation) {
+        fetchLocationBasedAlerts();
       }
     }
   }, [routeData.startPoint, routeData.endPoint, routeData.startCoords, routeData.endCoords]);
@@ -269,10 +378,10 @@ const getAlertTypeColor = (type: string) => {
     }
   }, [userLocation, routeCenter]);
 
-  // CONNECTED TO BACKEND: Fetch route-specific alerts with 8km radius and 4-5 limit
-  const fetchRouteAlerts = async (center: [number, number]) => {
-    if (!center || !Array.isArray(center) || center.length !== 2) {
-      console.error('❌ Invalid center coordinates provided to fetchRouteAlerts');
+  // CONNECTED TO BACKEND: Fetch route-specific alerts using route polyline filtering
+  const fetchRouteAlerts = async (startCoords: [number, number], endCoords: [number, number], routePolyline?: [number, number][]) => {
+    if (!startCoords || !endCoords || !Array.isArray(startCoords) || !Array.isArray(endCoords)) {
+      console.error('❌ Invalid coordinates provided to fetchRouteAlerts');
       setRouteAlerts([]);
       setShowViewAllButton(false);
       return;
@@ -280,20 +389,38 @@ const getAlertTypeColor = (type: string) => {
 
     setIsLoadingAlerts(true);
     try {
-      // Use the nearby alerts API with 8km radius
-      const response = await alertsAPI.getNearbyAlerts(center[0], center[1], 8);
-      
+      // Use the route-specific alerts API with larger radius to get candidate alerts
+      // We'll filter them precisely using the route polyline
+      const response = await alertsAPI.getRouteAlerts(startCoords[0], startCoords[1], endCoords[0], endCoords[1], 15);
+
       if (response.data.success && response.data.alerts) {
         const alerts = response.data.alerts;
-        
+
+        // Filter alerts using route polyline if available
+        const filteredAlerts = routePolyline && routePolyline.length >= 2
+          ? alerts.filter((alert: any) => {
+              const alertLat = alert.location?.coordinates?.[1] || alert.lat;
+              const alertLon = alert.location?.coordinates?.[0] || alert.long;
+
+              if (!alertLat || !alertLon) {
+                console.warn('Alert missing location coordinates:', alert._id);
+                return false;
+              }
+
+              return isPointNearRoute(alertLat, alertLon, routePolyline, 3); // 3km threshold
+            })
+          : alerts;
+
+        console.log(`🎯 Filtered ${alerts.length} alerts to ${filteredAlerts.length} route-relevant alerts`);
+
         // Transform alerts for display with error handling
-        const transformedAlerts = alerts.map((alert: any) => {
+        const transformedAlerts = filteredAlerts.map((alert: any) => {
           try {
             return {
               ...alert,
               id: alert._id || alert.id || `alert-${Math.random()}`,
-              name: alert.reportedBy?.email || 'Anonymous',
-              avatar: alert.reportedBy?.email?.charAt(0).toUpperCase() || 'A',
+              name: alert.reportedBy?.name || alert.reportedBy?.email || 'Anonymous',
+              avatar: alert.reportedBy?.name?.charAt(0).toUpperCase() || alert.reportedBy?.email?.charAt(0).toUpperCase() || 'A',
               text: alert.message || 'No message available',
               time: formatTimeAgo(alert.timeStamp || alert.createdAt || new Date().toISOString()),
               user: alert.reportedBy?.email === user?.email ? 'You' : 'Community User'
@@ -311,26 +438,31 @@ const getAlertTypeColor = (type: string) => {
             };
           }
         });
-        
+
         // Sort by timestamp and limit to 4-5 most recent for Dashboard
         const sortedAlerts = transformedAlerts.sort((a: any, b: any) => {
           const aTime = new Date(a.timeStamp || a.createdAt || 0).getTime();
           const bTime = new Date(b.timeStamp || b.createdAt || 0).getTime();
           return bTime - aTime;
         });
-        
+
         const limitedAlerts = sortedAlerts.slice(0, 5);
         setRouteAlerts(limitedAlerts);
+        setRadiusAlerts([]); // Clear nearby alerts when showing route alerts
+        // Save to localStorage for persistence across navigation
+        localStorage.setItem('commuteSmart_routeAlerts', JSON.stringify(limitedAlerts));
         setShowViewAllButton(alerts.length > 5);
       } else {
         setRouteAlerts([]);
+        setRadiusAlerts([]);
         setShowViewAllButton(false);
       }
     } catch (error: any) {
       console.error('❌ Error fetching route alerts:', error);
       setRouteAlerts([]);
+      setRadiusAlerts([]);
       setShowViewAllButton(false);
-      
+
       // Don't show toast for dashboard errors, just fail silently
     } finally {
       setIsLoadingAlerts(false);
@@ -777,10 +909,10 @@ const getAlertTypeColor = (type: string) => {
         
         console.log('🎯 Route center calculated:', routeCenter);
         setRouteCenter(routeCenter);
-        
-        // Fetch alerts with error handling
+
+        // Fetch alerts with error handling using start, end coordinates, and route polyline
         try {
-          await fetchRouteAlerts(routeCenter);
+          await fetchRouteAlerts(startCoords, endCoords, coordinates);
         } catch (alertError) {
           console.error('⚠️ Error fetching route alerts:', alertError);
           // Don't fail the whole route calculation if alerts fail
@@ -815,18 +947,6 @@ const getAlertTypeColor = (type: string) => {
       setIsCalculatingRoute(false);
       setIsGeocoding(false);
     }
-  };
-
-  // Helper function to calculate distance between two coordinates
-  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
-    const R = 6371; // Earth's radius in km
-    const dLat = (lat2 - lat1) * Math.PI / 180;
-    const dLon = (lon2 - lon1) * Math.PI / 180;
-    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-              Math.sin(dLon/2) * Math.sin(dLon/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    return R * c;
   };
 
   // STABILITY FIX: Use stable callback and simple dependency
@@ -979,7 +1099,7 @@ const getAlertTypeColor = (type: string) => {
     setRouteCenter(null);
     setRouteAlerts([]);
     setRadiusAlerts([]);
-    // Also clear route in RouteContext
+    // Also clear route in RouteContext (localStorage cleanup handled in useEffect)
     clearContextRoute();
   };
 
@@ -1339,10 +1459,17 @@ const getAlertTypeColor = (type: string) => {
                 <AnimatePresence>
                   {routeCenter ? (
                     <>
-                      {/* Route-specific alerts (Priority 1) */}
-                      {routeAlerts.length > 0 && (
+                      {/* Dynamic heading for route alerts */}
+                      <div className="text-xs font-bold text-orange-400 mb-2 uppercase tracking-wider">
+                        Route Alerts ({routeData.startPoint} → {routeData.endPoint})
+                      </div>
+                      <div className="text-[10px] text-gray-500 mb-3">
+                        Showing alerts along your route
+                      </div>
+
+                      {/* Route-specific alerts */}
+                      {routeAlerts.length > 0 ? (
                         <>
-                          <div className="text-xs font-bold text-orange-400 mb-2 uppercase tracking-wider">Route Alerts</div>
                           {routeAlerts.map((alert, index) => (
                             <motion.div
                               key={`route-alert-${index}`}
@@ -1376,20 +1503,17 @@ const getAlertTypeColor = (type: string) => {
                                 <span className="text-[10px] text-gray-500">{alert.time || 'Just now'}</span>
                               </div>
                               <p className="text-xs text-gray-300 mb-1">{alert.message || alert.text || 'Alert on your route'}</p>
-                              
-                              {/* Affected route information */}
-                              {(routeData.startPoint && routeData.endPoint) && (
-                                <div className="flex items-center gap-1 text-xs text-orange-300 mb-1">
-                                  <span className="material-symbols-outlined text-[10px]">route</span>
-                                  <span>{routeData.startPoint} → {routeData.endPoint}</span>
-                                </div>
+
+                              {/* Alert location - preserve original location from backend */}
+                              {(alert.locationText || alert.area) && (
+                                <p className="text-xs text-orange-400 mt-1">📍 {alert.locationText || alert.area}</p>
                               )}
-                              
-                              {/* Location for user reports */}
-                              {alert.location && alert.user === 'You' && (
+
+                              {/* Location for user reports with GPS */}
+                              {alert.location && alert.user === 'You' && !alert.locationText && !alert.area && (
                                 <p className="text-xs text-orange-400 mt-1">📍 Location reported</p>
                               )}
-                              
+
                               {/* Reporter information */}
                               <div className="flex items-center gap-1 mt-2 text-[10px] text-gray-400">
                                 <span className="material-symbols-outlined text-[10px]">person</span>
@@ -1398,30 +1522,31 @@ const getAlertTypeColor = (type: string) => {
                             </motion.div>
                           ))}
                         </>
-                      )}
-
-                      {/* Divider between route and radius alerts */}
-                      {routeAlerts.length > 0 && radiusAlerts.length > 0 && (
-                        <div className="flex items-center gap-2 py-2">
-                          <div className="flex-1 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent"></div>
-                          <span className="text-xs text-gray-500 uppercase tracking-wider">Nearby</span>
-                          <div className="flex-1 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent"></div>
+                      ) : (
+                        /* No route alerts found */
+                        <div className="flex flex-col items-center justify-center py-8 text-center">
+                          <span className="material-symbols-outlined text-3xl text-orange-400 mb-3">search_off</span>
+                          <span className="text-sm text-gray-300 font-medium">No alerts found along this route</span>
+                          <span className="text-xs text-gray-500 mt-1">within 3km of your path</span>
                         </div>
                       )}
-
-                      {/* Radius alerts (Priority 2) */}
-                      {radiusAlerts.length > 0 && (
+                    </>
+                  ) : (
+                    /* No route - show nearby alerts or fallback */
+                    <>
+                      {radiusAlerts.length > 0 ? (
                         <>
-                          {routeAlerts.length === 0 && (
-                            <div className="text-xs font-bold text-blue-400 mb-2 uppercase tracking-wider">Nearby Alerts</div>
-                          )}
+                          {/* Dynamic heading for nearby alerts */}
+                          <div className="text-xs font-bold text-blue-400 mb-2 uppercase tracking-wider">
+                            Nearby Alerts (within 8km)
+                          </div>
                           {radiusAlerts.map((alert, index) => (
                             <motion.div
                               key={`radius-alert-${index}`}
                               initial={{ opacity: 0, x: -20 }}
                               animate={{ opacity: 1, x: 0 }}
                               exit={{ opacity: 0, x: 20 }}
-                              transition={{ delay: (routeAlerts.length + index) * 0.1, duration: 0.3 }}
+                              transition={{ delay: index * 0.1, duration: 0.3 }}
                               className="p-3 bg-blue-500/10 rounded-xl border border-blue-500/20 hover:border-blue-500/40 transition-all cursor-pointer group"
                               whileHover={{ scale: 1.02, backgroundColor: 'rgba(59, 130, 246, 0.15)' }}
                             >
@@ -1449,9 +1574,9 @@ const getAlertTypeColor = (type: string) => {
                               </div>
                               <p className="text-xs text-gray-300 mb-1">{alert.message || alert.text || 'Alert in your area'}</p>
                               
-                              {/* Location for user reports */}
-                              {alert.location && alert.user === 'You' && (
-                                <p className="text-xs text-blue-400 mt-1">📍 Location reported</p>
+                              {/* Alert location for nearby alerts */}
+                              {(alert.locationText || alert.area) && (
+                                <p className="text-xs text-blue-400 mt-1">📍 {alert.locationText || alert.area}</p>
                               )}
                               
                               {/* Reporter information */}
@@ -1462,25 +1587,23 @@ const getAlertTypeColor = (type: string) => {
                             </motion.div>
                           ))}
                         </>
-                      )}
-
-                      {/* No alerts found message */}
-                      {routeAlerts.length === 0 && radiusAlerts.length === 0 && (
+                      ) : (
+                        /* No nearby alerts and no location - show fallback */
                         <div className="flex flex-col items-center justify-center py-8 text-center">
-                          <span className="material-symbols-outlined text-3xl text-green-400 mb-3">check_circle</span>
-                          <span className="text-sm text-gray-300 font-medium">No alerts or reports found</span>
-                          <span className="text-xs text-gray-500 mt-1">on this route or within 8km radius</span>
+                          <span className="material-symbols-outlined text-3xl text-gray-400 mb-3">location_off</span>
+                          <span className="text-sm text-gray-300 font-medium">Enter a route or enable location</span>
+                          <span className="text-xs text-gray-500 mt-1">to see relevant alerts</span>
                         </div>
                       )}
-                      
-                      {/* Show "View All Alerts" button when route has more alerts */}
+
+                      {/* Show "View All Alerts" button */}
                       {showViewAllButton && (
                         <motion.div
                           initial={{ opacity: 0, y: 10 }}
                           animate={{ opacity: 1, y: 0 }}
                           transition={{ delay: 0.3 }}
                         >
-                          <Link 
+                          <Link
                             to="/alerts"
                             className="w-full py-2 rounded-xl bg-[#0fb880]/20 hover:bg-[#0fb880]/30 flex items-center justify-center gap-2 text-sm text-[#0fb880] hover:text-white transition-colors group border border-[#0fb880]/30"
                           >
@@ -1490,12 +1613,6 @@ const getAlertTypeColor = (type: string) => {
                         </motion.div>
                       )}
                     </>
-                  ) : (
-                    <div className="flex flex-col items-center justify-center py-8 text-center">
-                      <span className="material-symbols-outlined text-3xl text-green-400 mb-3">check_circle</span>
-                      <span className="text-sm text-gray-300 font-medium">No alerts or reports found</span>
-                      <span className="text-xs text-gray-500 mt-1">on this route or within 8km radius</span>
-                    </div>
                   )}
                 </AnimatePresence>
               )}
