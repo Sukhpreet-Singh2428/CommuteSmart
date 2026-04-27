@@ -411,7 +411,7 @@ exports.deleteAlert = async (req, res) => {
 
 // CONNECTED TO BACKEND: Get route-specific alerts with proximity checking
 exports.getRouteAlerts = async (req, res) => {
-    const { startLat, startLong, endLat, endLong, radius = 20 } = req.query;
+    const { startLat, startLong, endLat, endLong, radius = 8 } = req.query;
     const userId = req.user?.id; // Get current user ID if authenticated
 
     if (!startLat || !startLong || !endLat || !endLong) {
@@ -427,7 +427,7 @@ exports.getRouteAlerts = async (req, res) => {
 
         console.log('Route center:', centerLat, centerLong);
 
-        // Find alerts near the route center with larger radius
+        // Find alerts near the route center with 8km radius
         const alerts = await Report.find({
             type: 'alert',
             location: {

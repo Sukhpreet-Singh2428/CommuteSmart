@@ -173,7 +173,7 @@ export const alertsAPI = {
     api.delete(`/api/alerts/${alertId}`),
 
   // CONNECTED TO BACKEND: Get route-specific alerts
-  getRouteAlerts: (startLat: number, startLong: number, endLat: number, endLong: number, radius: number = 20) =>
+  getRouteAlerts: (startLat: number, startLong: number, endLat: number, endLong: number, radius: number = 8) =>
     api.get(`/api/alerts/route?startLat=${startLat}&startLong=${startLong}&endLat=${endLat}&endLong=${endLong}&radius=${radius}`),
 
   // CONNECTED TO BACKEND: Create route-specific alert
