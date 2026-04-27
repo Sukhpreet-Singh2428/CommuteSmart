@@ -9,6 +9,7 @@ import { PageNavbar } from '../components/PageNavbar';
 import { useLiveStats, useTrendingAreas, useTopContributors } from '../hooks/useLiveStats';
 import { useLocationService } from '../hooks/useLocationService';
 import { ReportAlertModal } from '../components/ReportAlertModal';
+import { ConfirmDeleteModal } from '../components/ConfirmDeleteModal';
 import type { LeaderboardEntry, TrendingArea as TrendingAreaType } from '../types';
 
 // Helper to calculate distance between two coordinates
@@ -196,6 +197,8 @@ export function Alerts() {
     try { return JSON.parse(localStorage.getItem('commuteSmart_challenge') || 'false'); } catch { return false; }
   });
   const [shareCopied, setShareCopied] = useState<string | null>(null);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [alertToDelete, setAlertToDelete] = useState<string | null>(null);
 
   // CONNECTED TO BACKEND: Live data hooks
   const { stats: liveStats, loading: statsLoading } = useLiveStats();
@@ -437,6 +440,8 @@ export function Alerts() {
       
       setAlerts(prev => prev.filter(alert => alert._id !== alertId));
       toast.success('Alert deleted successfully! 🗑️');
+      setDeleteConfirmOpen(false);
+      setAlertToDelete(null);
     } catch (error: any) {
       console.error('Error deleting alert:', error);
       if (error.response?.status === 403) {
@@ -446,6 +451,25 @@ export function Alerts() {
       } else {
         toast.error('Failed to delete alert');
       }
+    }
+  };
+
+  // Open delete confirmation modal
+  const openDeleteConfirm = (alertId: string) => {
+    setAlertToDelete(alertId);
+    setDeleteConfirmOpen(true);
+  };
+
+  // Close delete confirmation modal
+  const closeDeleteConfirm = () => {
+    setDeleteConfirmOpen(false);
+    setAlertToDelete(null);
+  };
+
+  // Confirm delete action
+  const confirmDelete = () => {
+    if (alertToDelete) {
+      handleDeleteAlert(alertToDelete);
     }
   };
 
@@ -803,16 +827,14 @@ export function Alerts() {
                         </button>
                         {/* CONNECTED TO BACKEND: Delete button for own alerts */}
                         {alert.reporter?.email === user?.email && (
-                          <button 
+                          <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              if (window.confirm('Are you sure you want to delete this alert?')) {
-                                handleDeleteAlert(alert._id);
-                              }
+                              openDeleteConfirm(alert._id);
                             }}
                             className="flex items-center gap-1.5 text-red-400 hover:text-red-300 transition-colors group"
                           >
-                            <motion.span 
+                            <motion.span
                               className="material-symbols-outlined text-lg"
                               whileHover={{ scale: 1.2 }}
                               whileTap={{ scale: 0.8 }}
@@ -991,6 +1013,15 @@ export function Alerts() {
       <ReportAlertModal
         isOpen={showReportModal}
         onClose={() => setShowReportModal(false)}
+      />
+
+      {/* Custom Delete Confirmation Modal */}
+      <ConfirmDeleteModal
+        isOpen={deleteConfirmOpen}
+        onClose={closeDeleteConfirm}
+        onConfirm={confirmDelete}
+        message="Are you sure you want to delete this alert?"
+        title="Delete Alert"
       />
     </div>
   );
