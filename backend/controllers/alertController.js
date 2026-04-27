@@ -347,7 +347,8 @@ exports.deleteComment = async (req, res) => {
 // CONNECTED TO BACKEND: Get nearby alerts within radius
 exports.getNearbyAlerts = async (req, res) => {
     const { lat, long, radius = 8 } = req.query;
-    
+    const userId = req.user?.id; // Get current user ID if authenticated
+
     if (!lat || !long) {
         return res.status(400).json({success: false, message: "Latitude and longitude are required"});
     }
@@ -367,9 +368,16 @@ exports.getNearbyAlerts = async (req, res) => {
         })
         .populate('reportedBy', 'email name username profilePhoto')
         .sort({timeStamp: -1})
-        .limit(50);
+        .limit(50)
+        .lean();
 
-        res.json({success: true, alerts});
+        // Add isLiked flag to each alert
+        const alertsWithLikeStatus = alerts.map(alert => ({
+            ...alert,
+            isLiked: userId && Array.isArray(alert.upvotes) ? alert.upvotes.some(id => id.toString() === userId.toString()) : false,
+        }));
+
+        res.json({success: true, alerts: alertsWithLikeStatus});
     } catch (error) {
         console.error('Error fetching nearby alerts:', error);
         res.status(500).json({success: false, message: "Failed to fetch nearby alerts"});
@@ -404,7 +412,8 @@ exports.deleteAlert = async (req, res) => {
 // CONNECTED TO BACKEND: Get route-specific alerts with proximity checking
 exports.getRouteAlerts = async (req, res) => {
     const { startLat, startLong, endLat, endLong, radius = 8 } = req.query;
-    
+    const userId = req.user?.id; // Get current user ID if authenticated
+
     if (!startLat || !startLong || !endLat || !endLong) {
         return res.status(400).json({success: false, message: "Start and end coordinates are required"});
     }
@@ -437,14 +446,21 @@ exports.getRouteAlerts = async (req, res) => {
         })
         .populate('reportedBy', 'email name username profilePhoto')
         .sort({timeStamp: -1})
-        .limit(50);
+        .limit(50)
+        .lean();
 
         // Remove duplicates (alerts that might be near multiple route points)
         const uniqueAlerts = alerts.filter((alert, index, self) => 
             index === self.findIndex((a) => a._id.toString() === alert._id.toString())
         );
 
-        res.json({success: true, alerts: uniqueAlerts});
+        // Add isLiked flag to each alert
+        const alertsWithLikeStatus = uniqueAlerts.map(alert => ({
+            ...alert,
+            isLiked: userId && Array.isArray(alert.upvotes) ? alert.upvotes.some(id => id.toString() === userId.toString()) : false,
+        }));
+
+        res.json({success: true, alerts: alertsWithLikeStatus});
     } catch (error) {
         console.error('Error fetching route alerts:', error);
         res.status(500).json({success: false, message: "Failed to fetch route alerts"});
