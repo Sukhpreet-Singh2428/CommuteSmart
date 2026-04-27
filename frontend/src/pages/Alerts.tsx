@@ -162,6 +162,19 @@ const filterOptions = [
   { id: 'recent', label: 'Recent', icon: 'history' },
 ];
 
+// Vehicle icon map — keyed by transportMode field value
+const TRANSPORT_ICONS: Record<string, { icon: string; color: string; label: string }> = {
+  bus:     { icon: '🚌', color: '#00C853', label: 'Bus Route'   },
+  metro:   { icon: '🚇', color: '#3b82f6', label: 'Metro Route' },
+  cycle:   { icon: '🚲', color: '#f59e0b', label: 'Cycle Route' },
+  general: { icon: '⚠️', color: '#6b7280', label: 'General'     },
+  // Fallback for any other value:
+  default: { icon: '⚠️', color: '#6b7280', label: 'Alert'       },
+}
+
+const getTransportIcon = (transportMode: string) =>
+  TRANSPORT_ICONS[transportMode?.toLowerCase()] || TRANSPORT_ICONS.default
+
 export function Alerts() {
   const [filter, setFilter] = useState<'all' | 'verified' | 'nearby' | 'recent'>('all');
   const { user } = useAuth();
@@ -692,7 +705,17 @@ export function Alerts() {
                 <div className="flex gap-4">
                   <div className="flex-shrink-0">
                     <div className={`w-12 h-12 rounded-lg bg-white/10 flex items-center justify-center border border-white/20`}>
-                      <span className={`material-symbols-outlined ${getAlertIconColor(alert.type)}`}>{getAlertIcon(alert.type)}</span>
+                      {(() => {
+                        const transport = getTransportIcon(alert.transportMode);
+                        return (
+                          <span
+                            style={{ fontSize: '22px' }}
+                            title={transport.label}
+                          >
+                            {transport.icon}
+                          </span>
+                        );
+                      })()}
                     </div>
                   </div>
                   <div className="flex-1">
@@ -707,7 +730,10 @@ export function Alerts() {
                         <p className="text-gray-400 text-sm mb-2">{alert.message}</p>
                         <div className="flex items-center gap-2 text-xs text-gray-500">
                           <span className="material-symbols-outlined text-sm">location_on</span>
-                          {typeof alert.location === 'string' ? alert.location : 'Location reported'}
+                          {alert.locationText && alert.locationText.trim()
+                            ? alert.locationText
+                            : 'Location not specified'
+                          }
                         </div>
                       </div>
                       <span className="text-xs text-gray-500 whitespace-nowrap ml-4">{formatTimeAgo(alert.createdAt)}</span>

@@ -81,6 +81,8 @@ export interface AlertData {
   comments?: number;
   liked?: boolean;
   createdAt?: string;
+  transportMode?: 'bus' | 'metro' | 'cycle' | 'general';
+  locationText?: string;
 }
 
 export interface Pagination {
