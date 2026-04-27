@@ -53,20 +53,27 @@ api.interceptors.response.use(
   (error) => {
     // Log error response
     console.error(`❌ API Error: ${error.config?.method?.toUpperCase()} ${error.config?.url}`, error.response?.data || error.message);
-    
+
     // Handle specific error cases
     if (error.response?.status === 401) {
-      // Unauthorized - clear auth and redirect to login
+      // Unauthorized - clear auth data
       console.warn('User not authorized, clearing auth data');
       localStorage.removeItem('commuteSmart_user');
-      
-      // Prevent infinite redirect loops
-      if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
-        console.log('Redirecting to login page...');
+
+      // Only redirect to login on protected routes, NOT on public routes
+      // Public routes: /, /login, /register, /auth/callback
+      const publicRoutes = ['/', '/login', '/register', '/auth/callback'];
+      const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
+      const isPublicRoute = publicRoutes.some(route => currentPath === route || currentPath.startsWith(route));
+
+      if (typeof window !== 'undefined' && !isPublicRoute && currentPath !== '/login') {
+        console.log('Redirecting to login page from protected route...');
         // Use a small delay to prevent immediate redirect loops
         setTimeout(() => {
           window.location.href = '/login';
         }, 100);
+      } else {
+        console.log('Not redirecting - user is on a public route');
       }
     } else if (error.response?.status === 403) {
       // Forbidden
@@ -90,7 +97,7 @@ api.interceptors.response.use(
       console.error('Generic error:', errorMessage);
       toast.error(errorMessage);
     }
-    
+
     return Promise.reject(error);
   }
 );
