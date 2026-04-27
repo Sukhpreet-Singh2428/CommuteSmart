@@ -123,7 +123,7 @@ export function Profile() {
   useEffect(() => {
     const fetchLeaderboard = async () => {
       try {
-        const response = await leaderboardAPI.getLeaderboard(10);
+        const response = await leaderboardAPI.getLeaderboard(5);
         if (response.data.success && response.data.leaderboard) {
           const entries = response.data.leaderboard.map((entry: { userId: string; name: string; email: string; points: number; rank: number }, index: number) => ({
             rank: entry.rank || index + 1,
