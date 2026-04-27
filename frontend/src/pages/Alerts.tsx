@@ -199,6 +199,8 @@ export function Alerts() {
   const [shareCopied, setShareCopied] = useState<string | null>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [alertToDelete, setAlertToDelete] = useState<string | null>(null);
+  const [commentDeleteOpen, setCommentDeleteOpen] = useState(false);
+  const [commentToDelete, setCommentToDelete] = useState<{ alertId: string; commentId: string } | null>(null);
 
   // CONNECTED TO BACKEND: Live data hooks
   const { stats: liveStats, loading: statsLoading } = useLiveStats();
@@ -258,15 +260,15 @@ export function Alerts() {
 
       // PHASE 3: Listen for comment updates
       newSocket.on('alert:comment:new', (data: any) => {
-        setAlerts(prev => prev.map(a => 
+        setAlerts(prev => prev.map(a =>
           (a._id || a.id) === data.alertId ? { ...a, comments: data.totalComments } : a
         ));
-        
+
         setAlertComments(prev => {
           if (prev[data.alertId]) {
-            // Prevent duplicate comments in local state
-            const exists = prev[data.alertId].some((c: any) => 
-              c.createdAt === data.comment.createdAt && c.userId === data.comment.userId
+            // Prevent duplicate comments in local state using _id
+            const exists = prev[data.alertId].some((c: any) =>
+              c._id === data.comment._id
             );
             if (!exists) {
               return {
@@ -274,6 +276,23 @@ export function Alerts() {
                 [data.alertId]: [...prev[data.alertId], data.comment]
               };
             }
+          }
+          return prev;
+        });
+      });
+
+      // Listen for comment deletion
+      newSocket.on('alert:comment:deleted', (data: any) => {
+        setAlerts(prev => prev.map(a =>
+          (a._id || a.id) === data.alertId ? { ...a, comments: data.totalComments } : a
+        ));
+
+        setAlertComments(prev => {
+          if (prev[data.alertId]) {
+            return {
+              ...prev,
+              [data.alertId]: prev[data.alertId].filter((c: any) => c._id !== data.commentId)
+            };
           }
           return prev;
         });
@@ -312,7 +331,7 @@ export function Alerts() {
           verified: getLikeCount(alert.upvotes) >= 5,
           upvotes: getLikeCount(alert.upvotes),
           comments: Array.isArray(alert.comments) ? alert.comments.length : (alert.commentsCount || 0),
-          liked: false,
+          liked: alert.isLiked || false,
           createdAt: alert.timeStamp || alert.createdAt || new Date().toISOString()
         }));
         
@@ -320,6 +339,11 @@ export function Alerts() {
           setAlerts(prev => [...prev, ...backendAlerts]);
         } else {
           setAlerts(backendAlerts);
+          // Initialize upvotedAlerts Set from backend response
+          const likedAlertIds = backendAlerts
+            .filter((alert: any) => alert.liked)
+            .map((alert: any) => alert._id || alert.id);
+          setUpvotedAlerts(new Set(likedAlertIds));
         }
         setHasMorePages((response.data.pagination?.page || 1) < (response.data.pagination?.pages || 1));
       } else {
@@ -473,6 +497,38 @@ export function Alerts() {
     }
   };
 
+  // Open comment delete confirmation
+  const openCommentDeleteConfirm = (alertId: string, commentId: string) => {
+    setCommentToDelete({ alertId, commentId });
+    setCommentDeleteOpen(true);
+  };
+
+  // Close comment delete confirmation
+  const closeCommentDeleteConfirm = () => {
+    setCommentDeleteOpen(false);
+    setCommentToDelete(null);
+  };
+
+  // Confirm comment delete action
+  const confirmCommentDelete = async () => {
+    if (!commentToDelete) return;
+    try {
+      await alertsAPI.deleteComment(commentToDelete.alertId, commentToDelete.commentId);
+      toast.success('Comment deleted successfully!');
+      setCommentDeleteOpen(false);
+      setCommentToDelete(null);
+    } catch (error: any) {
+      console.error('Error deleting comment:', error);
+      if (error.response?.status === 403) {
+        toast.error('You can only delete your own comments');
+      } else if (error.response?.status === 404) {
+        toast.error('Comment not found');
+      } else {
+        toast.error('Failed to delete comment');
+      }
+    }
+  };
+
   // PHASE 3: Commenting Handlers
   const toggleComments = async (alertId: string) => {
     if (expandedAlertId === alertId) {
@@ -499,16 +555,7 @@ export function Alerts() {
     try {
       const response = await alertsAPI.addComment(alertId, commentText);
       if (response.data.success) {
-        setAlertComments(prev => ({
-          ...prev,
-          [alertId]: [...(prev[alertId] || []), response.data.comment]
-        }));
-        
-        // Update comments count on alert locally
-        setAlerts(prev => prev.map(a => 
-          a._id === alertId ? { ...a, comments: response.data.totalComments } : a
-        ));
-        
+        // Comment will be added via socket event, no optimistic update
         setCommentText('');
         toast.success('Comment added!');
       }
@@ -860,10 +907,21 @@ export function Alerts() {
                               <p className="text-xs text-gray-500 text-center py-2">No comments yet. Be the first to comment!</p>
                             ) : (
                               alertComments[alert._id].map((comment: any, i: number) => (
-                                <div key={i} className="bg-white/5 rounded-lg p-2.5">
+                                <div key={comment._id || i} className="bg-white/5 rounded-lg p-2.5">
                                   <div className="flex justify-between items-start mb-1">
                                     <span className="text-xs font-bold text-[#0fb880]">{comment.userName}</span>
-                                    <span className="text-[10px] text-gray-500">{formatTimeAgo(comment.createdAt)}</span>
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-[10px] text-gray-500">{formatTimeAgo(comment.createdAt)}</span>
+                                      {comment.userId === user?.id && (
+                                        <button
+                                          onClick={() => openCommentDeleteConfirm(alert._id, comment._id)}
+                                          className="text-gray-500 hover:text-red-400 transition-colors"
+                                          title="Delete comment"
+                                        >
+                                          <span className="material-symbols-outlined text-sm">delete</span>
+                                        </button>
+                                      )}
+                                    </div>
                                   </div>
                                   <p className="text-xs text-gray-300">{comment.text}</p>
                                 </div>
@@ -1022,6 +1080,15 @@ export function Alerts() {
         onConfirm={confirmDelete}
         message="Are you sure you want to delete this alert?"
         title="Delete Alert"
+      />
+
+      {/* Custom Comment Delete Confirmation Modal */}
+      <ConfirmDeleteModal
+        isOpen={commentDeleteOpen}
+        onClose={closeCommentDeleteConfirm}
+        onConfirm={confirmCommentDelete}
+        message="Delete this comment?"
+        title="Delete Comment"
       />
     </div>
   );

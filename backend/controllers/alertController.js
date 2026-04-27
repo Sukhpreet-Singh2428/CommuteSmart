@@ -115,6 +115,7 @@ exports.getAlerts = async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 20;
     const skip = (page - 1) * limit;
+    const userId = req.user?.id; // Get current user ID if authenticated
 
     const alertsDocs = await Report.find({type: 'alert'})
         .populate('reportedBy', 'email name username profilePhoto')
@@ -122,18 +123,19 @@ exports.getAlerts = async (req, res) => {
         .skip(skip)
         .limit(limit)
         .lean();
-    
+
     const total = await Report.countDocuments({type: 'alert'});
 
-    // Transform upvotes array to integer count for frontend consumption
+    // Transform upvotes array to integer count and add isLiked flag
     const alerts = alertsDocs.map(alert => ({
         ...alert,
         upvotes: Array.isArray(alert.upvotes) ? alert.upvotes.length : (typeof alert.upvotes === 'number' ? alert.upvotes : 0),
         commentsCount: Array.isArray(alert.comments) ? alert.comments.length : 0,
+        isLiked: userId && Array.isArray(alert.upvotes) ? alert.upvotes.some(id => id.toString() === userId.toString()) : false,
     }));
-    
+
     res.json({
-        success: true, 
+        success: true,
         alerts,
         pagination: {
             page,
@@ -287,13 +289,57 @@ exports.getComments = async (req, res) => {
         }
 
         // Sort comments by createdAt desc
-        const comments = (alert.comments || []).sort((a, b) => 
+        const comments = (alert.comments || []).sort((a, b) =>
             new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
         );
 
         res.json({ success: true, comments });
     } catch (err) {
         console.error('Error fetching comments:', err);
+        res.status(500).json({ success: false, message: err.message });
+    }
+};
+
+// DELETE /api/alerts/:alertId/comments/:commentId — delete own comment
+exports.deleteComment = async (req, res) => {
+    try {
+        const { alertId, commentId } = req.params;
+        const userId = req.user.id;
+
+        const alert = await Report.findById(alertId);
+        if (!alert) {
+            return res.status(404).json({ success: false, message: 'Alert not found' });
+        }
+
+        // Find the comment
+        const comment = alert.comments.id(commentId);
+        if (!comment) {
+            return res.status(404).json({ success: false, message: 'Comment not found' });
+        }
+
+        // Verify ownership
+        if (comment.userId.toString() !== userId) {
+            return res.status(403).json({ success: false, message: 'You can only delete your own comments' });
+        }
+
+        // Remove comment using pull
+        alert.comments.pull(commentId);
+        await alert.save();
+
+        const io = req.app.get('io');
+        io.emit('alert:comment:deleted', {
+            alertId: alert._id,
+            commentId: commentId,
+            totalComments: alert.comments.length
+        });
+
+        res.json({
+            success: true,
+            message: 'Comment deleted successfully',
+            totalComments: alert.comments.length
+        });
+    } catch (err) {
+        console.error('Error deleting comment:', err);
         res.status(500).json({ success: false, message: err.message });
     }
 };

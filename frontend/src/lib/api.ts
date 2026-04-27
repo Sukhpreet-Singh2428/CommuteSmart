@@ -179,6 +179,9 @@ export const alertsAPI = {
 
   getComments: (alertId: string) =>
     api.get(`/api/alerts/${alertId}/comments`),
+
+  deleteComment: (alertId: string, commentId: string) =>
+    api.delete(`/api/alerts/${alertId}/comments/${commentId}`),
 };
 
 export const leaderboardAPI = {
