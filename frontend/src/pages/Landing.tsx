@@ -35,8 +35,13 @@ function useCountUp(target: number, duration: number = 2000) {
 }
 
 export function Landing() {
-  const { user } = useAuth();
+  const { user, isLoading } = useAuth();
   const navigate = useNavigate();
+
+  // SAFEGUARD: Ensure Landing page is never auto-redirected
+  React.useEffect(() => {
+    console.log('Landing page mounted - user:', user ? 'authenticated' : 'not authenticated', 'isLoading:', isLoading);
+  }, [user, isLoading]);
 
   // STEP 1: Scroll progress bar
   const { scrollYProgress } = useScroll();
