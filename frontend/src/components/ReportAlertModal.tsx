@@ -47,6 +47,7 @@ export function ReportAlertModal({ isOpen, onClose, routeFrom, routeTo, startCoo
   const [transportMode, setTransportMode] = useState<string>(initialTransportMode || 'general');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [messageError, setMessageError] = useState('');
+  const [locationError, setLocationError] = useState('');
 
   useEffect(() => {
     if (isOpen) {
@@ -64,7 +65,12 @@ export function ReportAlertModal({ isOpen, onClose, routeFrom, routeTo, startCoo
       setMessageError('Message must be at least 10 characters');
       return;
     }
+    if (!locationText.trim()) {
+      setLocationError('Location is required');
+      return;
+    }
     setMessageError('');
+    setLocationError('');
     setIsSubmitting(true);
 
     try {
@@ -75,7 +81,7 @@ export function ReportAlertModal({ isOpen, onClose, routeFrom, routeTo, startCoo
         message: alertMessage.trim(),
         type: selectedType,
         severity: selectedSeverity,
-        locationText: locationText || '',
+        locationText: locationText.trim(),
         area: selectedArea,
         routeFrom: routeFrom || '',
         routeTo: routeTo || '',
@@ -275,21 +281,27 @@ export function ReportAlertModal({ isOpen, onClose, routeFrom, routeTo, startCoo
               {/* Location */}
               <div>
                 <label className="text-xs text-gray-400 font-medium uppercase tracking-wider mb-2 block">
-                  Location (Optional)
+                  Location <span className="text-red-400">*</span>
                 </label>
                 <input
                   type="text"
                   value={locationText}
-                  onChange={(e) => setLocationText(e.target.value)}
+                  onChange={(e) => {
+                    setLocationText(e.target.value);
+                    if (locationError) setLocationError('');
+                  }}
                   className="w-full bg-[#122620]/50 border border-white/10 rounded-xl px-3 py-2.5 text-sm focus:ring-1 focus:ring-[#0fb880] focus:border-[#0fb880] outline-none transition-all text-white focus:bg-[#122620]/70"
                   placeholder="e.g., Sector 17 Chowk, NH-44"
                 />
+                {locationError && (
+                  <span className="text-xs text-red-400 mt-1 block">{locationError}</span>
+                )}
               </div>
 
               {/* Area */}
               <div>
                 <label className="text-xs text-gray-400 font-medium uppercase tracking-wider mb-2 block">
-                  Area
+                  Area <span className="text-red-400">*</span>
                 </label>
                 <select
                   value={selectedArea}
@@ -312,7 +324,7 @@ export function ReportAlertModal({ isOpen, onClose, routeFrom, routeTo, startCoo
                 </button>
                 <button
                   onClick={handleSubmit}
-                  disabled={isSubmitting || !alertMessage.trim()}
+                  disabled={isSubmitting || !alertMessage.trim() || !locationText.trim()}
                   className="flex-1 bg-[#0fb880] hover:bg-[#0fb880]/90 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-medium py-2.5 rounded-xl transition-colors flex items-center justify-center gap-2"
                 >
                   {isSubmitting ? (

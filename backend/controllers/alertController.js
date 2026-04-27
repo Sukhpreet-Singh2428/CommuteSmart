@@ -51,15 +51,26 @@ exports.createAlert = async (req, res) => {
     const { message, lat, long, type, severity, location, area, routeFrom, routeTo } = req.body;
     const userId = req.user.id;
 
+    // Validation
+    if (!message || !message.trim()) {
+        return res.status(400).json({ success: false, message: 'Alert message is required' });
+    }
+    if (!req.body.locationText || !req.body.locationText.trim()) {
+        return res.status(400).json({ success: false, message: 'Location is required' });
+    }
+    if (!area || !area.trim()) {
+        return res.status(400).json({ success: false, message: 'Area is required' });
+    }
+
     const alert = new Report({
         type: 'alert',
         alertType: type || 'traffic',
         severity: severity || 'medium',
-        message,
+        message: message.trim(),
         location: { type: 'Point', coordinates: [long, lat] },
-        locationText: req.body.locationText || '',
+        locationText: req.body.locationText.trim(),
         transportMode: req.body.transportMode || 'general',
-        area: area || '',
+        area: area.trim(),
         routeFrom: routeFrom || '',
         routeTo: routeTo || '',
         reportedBy: userId,
@@ -104,6 +115,7 @@ exports.getAlerts = async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 20;
     const skip = (page - 1) * limit;
+    const userId = req.user?.id; // Get current user ID if authenticated
 
     const alertsDocs = await Report.find({type: 'alert'})
         .populate('reportedBy', 'email name username profilePhoto')
@@ -111,18 +123,19 @@ exports.getAlerts = async (req, res) => {
         .skip(skip)
         .limit(limit)
         .lean();
-    
+
     const total = await Report.countDocuments({type: 'alert'});
 
-    // Transform upvotes array to integer count for frontend consumption
+    // Transform upvotes array to integer count and add isLiked flag
     const alerts = alertsDocs.map(alert => ({
         ...alert,
         upvotes: Array.isArray(alert.upvotes) ? alert.upvotes.length : (typeof alert.upvotes === 'number' ? alert.upvotes : 0),
         commentsCount: Array.isArray(alert.comments) ? alert.comments.length : 0,
+        isLiked: userId && Array.isArray(alert.upvotes) ? alert.upvotes.some(id => id.toString() === userId.toString()) : false,
     }));
-    
+
     res.json({
-        success: true, 
+        success: true,
         alerts,
         pagination: {
             page,
@@ -276,7 +289,7 @@ exports.getComments = async (req, res) => {
         }
 
         // Sort comments by createdAt desc
-        const comments = (alert.comments || []).sort((a, b) => 
+        const comments = (alert.comments || []).sort((a, b) =>
             new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
         );
 
@@ -287,10 +300,55 @@ exports.getComments = async (req, res) => {
     }
 };
 
+// DELETE /api/alerts/:alertId/comments/:commentId — delete own comment
+exports.deleteComment = async (req, res) => {
+    try {
+        const { alertId, commentId } = req.params;
+        const userId = req.user.id;
+
+        const alert = await Report.findById(alertId);
+        if (!alert) {
+            return res.status(404).json({ success: false, message: 'Alert not found' });
+        }
+
+        // Find the comment
+        const comment = alert.comments.id(commentId);
+        if (!comment) {
+            return res.status(404).json({ success: false, message: 'Comment not found' });
+        }
+
+        // Verify ownership
+        if (comment.userId.toString() !== userId) {
+            return res.status(403).json({ success: false, message: 'You can only delete your own comments' });
+        }
+
+        // Remove comment using pull
+        alert.comments.pull(commentId);
+        await alert.save();
+
+        const io = req.app.get('io');
+        io.emit('alert:comment:deleted', {
+            alertId: alert._id,
+            commentId: commentId,
+            totalComments: alert.comments.length
+        });
+
+        res.json({
+            success: true,
+            message: 'Comment deleted successfully',
+            totalComments: alert.comments.length
+        });
+    } catch (err) {
+        console.error('Error deleting comment:', err);
+        res.status(500).json({ success: false, message: err.message });
+    }
+};
+
 // CONNECTED TO BACKEND: Get nearby alerts within radius
 exports.getNearbyAlerts = async (req, res) => {
     const { lat, long, radius = 8 } = req.query;
-    
+    const userId = req.user?.id; // Get current user ID if authenticated
+
     if (!lat || !long) {
         return res.status(400).json({success: false, message: "Latitude and longitude are required"});
     }
@@ -310,9 +368,16 @@ exports.getNearbyAlerts = async (req, res) => {
         })
         .populate('reportedBy', 'email name username profilePhoto')
         .sort({timeStamp: -1})
-        .limit(50);
+        .limit(50)
+        .lean();
 
-        res.json({success: true, alerts});
+        // Add isLiked flag to each alert
+        const alertsWithLikeStatus = alerts.map(alert => ({
+            ...alert,
+            isLiked: userId && Array.isArray(alert.upvotes) ? alert.upvotes.some(id => id.toString() === userId.toString()) : false,
+        }));
+
+        res.json({success: true, alerts: alertsWithLikeStatus});
     } catch (error) {
         console.error('Error fetching nearby alerts:', error);
         res.status(500).json({success: false, message: "Failed to fetch nearby alerts"});
@@ -347,7 +412,8 @@ exports.deleteAlert = async (req, res) => {
 // CONNECTED TO BACKEND: Get route-specific alerts with proximity checking
 exports.getRouteAlerts = async (req, res) => {
     const { startLat, startLong, endLat, endLong, radius = 8 } = req.query;
-    
+    const userId = req.user?.id; // Get current user ID if authenticated
+
     if (!startLat || !startLong || !endLat || !endLong) {
         return res.status(400).json({success: false, message: "Start and end coordinates are required"});
     }
@@ -380,14 +446,21 @@ exports.getRouteAlerts = async (req, res) => {
         })
         .populate('reportedBy', 'email name username profilePhoto')
         .sort({timeStamp: -1})
-        .limit(50);
+        .limit(50)
+        .lean();
 
         // Remove duplicates (alerts that might be near multiple route points)
         const uniqueAlerts = alerts.filter((alert, index, self) => 
             index === self.findIndex((a) => a._id.toString() === alert._id.toString())
         );
 
-        res.json({success: true, alerts: uniqueAlerts});
+        // Add isLiked flag to each alert
+        const alertsWithLikeStatus = uniqueAlerts.map(alert => ({
+            ...alert,
+            isLiked: userId && Array.isArray(alert.upvotes) ? alert.upvotes.some(id => id.toString() === userId.toString()) : false,
+        }));
+
+        res.json({success: true, alerts: alertsWithLikeStatus});
     } catch (error) {
         console.error('Error fetching route alerts:', error);
         res.status(500).json({success: false, message: "Failed to fetch route alerts"});
