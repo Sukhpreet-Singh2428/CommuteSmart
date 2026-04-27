@@ -150,6 +150,8 @@ export const alertsAPI = {
     area?: string;
     routeFrom?: string;
     routeTo?: string;
+    transportMode?: string;
+    locationText?: string;
   }) => api.post('/api/alerts', data),
   
   upvoteAlert: (alertId: string) =>

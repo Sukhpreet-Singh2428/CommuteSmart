@@ -1524,6 +1524,7 @@ const getAlertTypeColor = (type: string) => {
         routeFrom={routeData.startPoint || undefined}
         routeTo={routeData.endPoint || undefined}
         startCoords={routeData.startCoords || undefined}
+        initialTransportMode={selectedMode === 'bike' ? 'cycle' : selectedMode}
       />
     </div>
   );

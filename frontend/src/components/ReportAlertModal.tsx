@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { alertsAPI } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
@@ -34,17 +34,25 @@ interface ReportAlertModalProps {
   routeFrom?: string;
   routeTo?: string;
   startCoords?: [number, number];
+  initialTransportMode?: string;
 }
 
-export function ReportAlertModal({ isOpen, onClose, routeFrom, routeTo, startCoords }: ReportAlertModalProps) {
+export function ReportAlertModal({ isOpen, onClose, routeFrom, routeTo, startCoords, initialTransportMode }: ReportAlertModalProps) {
   const { user, updateUser } = useAuth();
   const [alertMessage, setAlertMessage] = useState('');
   const [selectedType, setSelectedType] = useState('traffic');
   const [selectedSeverity, setSelectedSeverity] = useState('medium');
   const [locationText, setLocationText] = useState('');
   const [selectedArea, setSelectedArea] = useState(PUNJAB_AREAS[0]);
+  const [transportMode, setTransportMode] = useState<string>(initialTransportMode || 'general');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [messageError, setMessageError] = useState('');
+
+  useEffect(() => {
+    if (isOpen) {
+      setTransportMode(initialTransportMode || 'general');
+    }
+  }, [isOpen, initialTransportMode]);
 
   const handleSubmit = async () => {
     // Validation
@@ -67,12 +75,13 @@ export function ReportAlertModal({ isOpen, onClose, routeFrom, routeTo, startCoo
         message: alertMessage.trim(),
         type: selectedType,
         severity: selectedSeverity,
-        location: locationText || '',
+        locationText: locationText || '',
         area: selectedArea,
         routeFrom: routeFrom || '',
         routeTo: routeTo || '',
         lat,
         long,
+        transportMode,
       });
 
       if (response.data.success) {
@@ -86,6 +95,7 @@ export function ReportAlertModal({ isOpen, onClose, routeFrom, routeTo, startCoo
         setSelectedSeverity('medium');
         setLocationText('');
         setSelectedArea(PUNJAB_AREAS[0]);
+        setTransportMode(initialTransportMode || 'general');
         onClose();
       }
     } catch (error: unknown) {
@@ -196,6 +206,44 @@ export function ReportAlertModal({ isOpen, onClose, routeFrom, routeTo, startCoo
                     >
                       <span className="text-base">{type.icon}</span>
                       <span className="text-xs font-medium">{type.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Transport Mode */}
+              <div style={{ marginBottom: '16px' }}>
+                <label className="text-xs text-gray-400 font-medium uppercase tracking-wider mb-2 block">
+                  TRANSPORT TYPE
+                </label>
+                <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                  {[
+                    { value: 'bus',     label: 'Bus',     icon: '🚌' },
+                    { value: 'metro',   label: 'Metro',   icon: '🚇' },
+                    { value: 'cycle',   label: 'Cycle',   icon: '🚲' },
+                    { value: 'general', label: 'General', icon: '⚠️' },
+                  ].map(mode => (
+                    <button
+                      key={mode.value}
+                      type="button"
+                      onClick={() => setTransportMode(mode.value)}
+                      style={{
+                        flex: 1,
+                        padding: '8px 4px',
+                        borderRadius: '8px',
+                        border: transportMode === mode.value ? '2px solid #00C853' : '1px solid rgba(255,255,255,0.1)',
+                        background: transportMode === mode.value ? 'rgba(0,200,83,0.1)' : 'rgba(255,255,255,0.05)',
+                        color: '#fff',
+                        cursor: 'pointer',
+                        fontSize: '11px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        gap: '4px',
+                      }}
+                    >
+                      <span style={{ fontSize: '18px' }}>{mode.icon}</span>
+                      <span>{mode.label}</span>
                     </button>
                   ))}
                 </div>

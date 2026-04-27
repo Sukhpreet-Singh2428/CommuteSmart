@@ -25,10 +25,17 @@ const reportSchema = new mongoose.Schema({
         },
         coordinates: [Number]   //? [longitude, latitude]
     },
+    transportMode: {
+        type: String,
+        enum: ['bus', 'metro', 'cycle', 'general'],
+        default: 'general',
+    },
     // Human-readable location text, e.g. "Sector 17 Chowk"
     locationText: {
         type: String,
-        default: ''
+        default: '',
+        trim: true,
+        maxlength: 200,
     },
     area: {
         type: String,
