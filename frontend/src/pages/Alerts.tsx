@@ -265,17 +265,17 @@ export function Alerts() {
         ));
 
         setAlertComments(prev => {
-          if (prev[data.alertId]) {
-            // Prevent duplicate comments in local state using _id
-            const exists = prev[data.alertId].some((c: any) =>
-              c._id === data.comment._id
-            );
-            if (!exists) {
-              return {
-                ...prev,
-                [data.alertId]: [...prev[data.alertId], data.comment]
-              };
-            }
+          // Always add comment to local state, even if comments section not expanded yet
+          const existingComments = prev[data.alertId] || [];
+          // Prevent duplicate comments in local state using _id
+          const exists = existingComments.some((c: any) =>
+            c._id === data.comment._id
+          );
+          if (!exists) {
+            return {
+              ...prev,
+              [data.alertId]: [...existingComments, data.comment]
+            };
           }
           return prev;
         });
@@ -512,6 +512,13 @@ export function Alerts() {
   // Confirm comment delete action
   const confirmCommentDelete = async () => {
     if (!commentToDelete) return;
+    // Safety check: ensure comment has valid _id (not syncing)
+    if (!commentToDelete.commentId) {
+      toast.error('Comment is still syncing, please try again after a moment or refresh');
+      setCommentDeleteOpen(false);
+      setCommentToDelete(null);
+      return;
+    }
     try {
       await alertsAPI.deleteComment(commentToDelete.alertId, commentToDelete.commentId);
       toast.success('Comment deleted successfully!');
