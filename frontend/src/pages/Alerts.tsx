@@ -722,16 +722,17 @@ export function Alerts() {
                     <div className="flex justify-between items-start mb-2">
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
-                          <h3 className="font-semibold text-white text-lg">{alert.title}</h3>
+                          <h3 className="font-semibold text-white text-lg">{alert.message}</h3>
                           {alert.verified && (
                             <span className="bg-[#0fb880]/20 text-[#0fb880] text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wide border border-[#0fb880]/20">Verified</span>
                           )}
                         </div>
-                        <p className="text-gray-400 text-sm mb-2">{alert.message}</p>
-                        <div className="flex items-center gap-2 text-xs text-gray-500">
+                        <div className="flex items-center gap-2 text-xs text-gray-500 mb-2">
                           <span className="material-symbols-outlined text-sm">location_on</span>
                           {alert.locationText && alert.locationText.trim()
                             ? alert.locationText
+                            : alert.area && alert.area.trim()
+                            ? alert.area
                             : 'Location not specified'
                           }
                         </div>

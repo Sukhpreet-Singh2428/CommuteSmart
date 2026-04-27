@@ -51,15 +51,26 @@ exports.createAlert = async (req, res) => {
     const { message, lat, long, type, severity, location, area, routeFrom, routeTo } = req.body;
     const userId = req.user.id;
 
+    // Validation
+    if (!message || !message.trim()) {
+        return res.status(400).json({ success: false, message: 'Alert message is required' });
+    }
+    if (!req.body.locationText || !req.body.locationText.trim()) {
+        return res.status(400).json({ success: false, message: 'Location is required' });
+    }
+    if (!area || !area.trim()) {
+        return res.status(400).json({ success: false, message: 'Area is required' });
+    }
+
     const alert = new Report({
         type: 'alert',
         alertType: type || 'traffic',
         severity: severity || 'medium',
-        message,
+        message: message.trim(),
         location: { type: 'Point', coordinates: [long, lat] },
-        locationText: req.body.locationText || '',
+        locationText: req.body.locationText.trim(),
         transportMode: req.body.transportMode || 'general',
-        area: area || '',
+        area: area.trim(),
         routeFrom: routeFrom || '',
         routeTo: routeTo || '',
         reportedBy: userId,
