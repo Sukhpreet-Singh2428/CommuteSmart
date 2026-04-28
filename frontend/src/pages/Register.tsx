@@ -57,21 +57,21 @@ export function Register() {
         <Confetti width={window.innerWidth} height={window.innerHeight} recycle={false} numberOfPieces={150} />
       )}
       
-      <div className="w-full lg:w-[450px] xl:w-[550px] flex flex-col justify-center p-8 lg:p-16 z-20 relative bg-background-dark/80 backdrop-blur-sm border-r border-white/5">
-        <div className="w-full max-w-md mx-auto my-4">
-          <div className="flex items-center gap-3 mb-8">
+      <div className="w-full lg:w-[450px] xl:w-[550px] flex flex-col p-8 lg:p-16 z-20 relative bg-background-dark/80 backdrop-blur-sm border-r border-white/5 overflow-y-auto" style={{ paddingTop: '40px', paddingBottom: '40px', scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+        <div className="w-full max-w-md mx-auto">
+          <div className="flex items-center gap-3 mb-6">
             <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
               <span className="material-icons text-white text-lg">directions_bus</span>
             </div>
             <span className="font-bold text-xl tracking-tight text-white">CommuteSmart</span>
           </div>
-          
-          <div className="mb-2">
+
+          <div className="mb-4">
             <h2 className="text-3xl font-bold text-white mb-2">Join the Movement</h2>
             <p className="text-gray-400">Create your account to start commuting sustainably across Punjab.</p>
           </div>
           
-          <form onSubmit={handleSubmit} className="space-y-5">
+          <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-400 mb-2">Full Name</label>
               <input
@@ -134,8 +134,8 @@ export function Register() {
               </button>
             </div>
           </form>
-          
-          <div className="relative my-6">
+
+          <div className="relative my-4">
             <div className="absolute inset-0 flex items-center">
               <div className="w-full border-t border-white/10"></div>
             </div>
